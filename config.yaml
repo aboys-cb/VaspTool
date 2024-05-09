@@ -4,9 +4,9 @@ SETTING:
   kpoints_type : Gamma
   vasp_path: vasp_std
   mpirun_path : mpirun
-  energy_min : -5
-  energy_max : 2
-  dpi : 300
+  energy_min : -5 #画图的范围
+  energy_max : 2 #画图的范围
+  dpi : 300 #图片的dpi
 #磁矩 如果体系里 出现了一下的元素 就设置磁矩 打开自旋
 MAGMOM:
   Co : 0.6
