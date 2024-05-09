@@ -6,14 +6,14 @@
 #### 软件架构
 软件架构说明
 最好python==3.10以上。3.8的提示有点问题，其他版本没有测试！
-
+script是一些写的画图脚本。
 
 #### 安装教程
 
 1. pip install pymatgen seekpath matminer
 2. 修改config.yaml中的PMG_VASP_PSP_DIR 这个是赝势路径
 3. 如果vasp_std不在环境变量 可以在config.yaml 修改vasp_path
-4. 
+4. 点击链接加入群聊【VaspTool】：https://qm.qq.com/q/wPDQYHMhyg
 
 
 #### 使用说明

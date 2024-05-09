@@ -1,7 +1,8 @@
-# coding:utf8
-"""
-email:1747193328@qq.com
-"""
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# @Time    : 2024/5/9 22:40
+# @Author  : 兵
+# @mail    : 1747193328@qq.com
 import os
 from monty.serialization import loadfn
 os.environ["PMG_DEFAULT_FUNCTIONAL"] = r"PBE_54"
