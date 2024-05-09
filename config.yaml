@@ -1,0 +1,281 @@
+SETTING:
+  #PMG_VASP_PSP_DIR 是必须指定的 赝势文件的路径
+  PMG_VASP_PSP_DIR : "~/POT_GGA_PAW_PBE_54/"
+  kpoints_type : Gamma
+  vasp_path: vasp_std
+  mpirun_path : mpirun
+  energy_min : -5
+  energy_max : 2
+  dpi : 300
+#磁矩 如果体系里 出现了一下的元素 就设置磁矩 打开自旋
+MAGMOM:
+  Co : 0.6
+#U值 给程序传入-u参数 就会开启+u 如果u值出现在下面的配置中 就设置 否则不开启
+
+U:
+  Co:
+    LDAUL : 2
+    LDAUU : 3.32
+    LDAUJ : 0
+
+
+
+INCAR :
+  SYSTEM : BaseIncar
+  EDIFF : 1e-06 #HSE会自动将成-4 加快计算 如果需要修改 程序162行左右HSE_EDIFF
+  EDIFFG: -0.01
+  ISPIN : 1 #其实这里设置无所谓 会根据磁性原子列表自动判断
+  ISMEAR : 0
+  SIGMA : 0.05
+  ISTART : 0 #在band 或者dos这种 程序会更改为1  初始文件主要控制优化以及自洽的时候
+  NELM : 100
+  ENCUT : 500
+  ALGO : Normal #在算性质的时候 会更改 比如HSE的时候是Damped
+  PREC : Normal
+  GGA : PE #pbesol会更改为PS
+  LREAL : Auto
+  NPAR : 4 #在无法并行化的程序里 会删除这个参数 但不影响能带等计算
+
+KPOINTS:
+  #k点的设置 可以指定[8,8,8] 也可以指定3000这种数字
+  band_structure:
+    sr:
+      default : 3000
+    scf:
+      default : 3000
+      pbe : 3000
+      hse : 3000
+      scan : 3000
+      r2scan : 3000
+      mbj : 3000
+      diag : 3000
+    band:
+      default: 10
+      pbe: 10
+      hse: 10
+      scan: 10
+      r2scan: 10
+      mbj: 10
+      gw: 3000
+    dos:
+      default: 3000
+      pbe: 3000
+      hse: 3000
+      scan: 3000
+      r2scan: 3000
+      mbj: 3000
+  optic_dielectric:
+    sr:
+      default : 1000
+    scf:
+      default : 3000
+
+      pbe : 6000
+      pbesol : 6000
+      hse : 6000
+    dielectric:
+      default : 3000
+
+      pbe: 3000
+      pbesol: 3000
+      hse: 3000
+    optic:
+      default : 3000
+
+      pbe: 6000
+      pbesol: 6000
+      hse: 6000
+
+
+POTCAR:
+  PBE54:
+    H : H
+    He : He
+    Li : Li_sv
+    Be : Be
+    B : B
+    C : C
+    N : N
+    O : O
+    F : F
+    Ne : Ne
+    Na : Na_pv
+    Mg : Mg
+    Al : Al
+    Si : Si
+    P : P
+    S : S
+    Cl : Cl
+    Ar : Ar
+    K : K_sv
+    Ca : Ca_sv
+    Sc : Sc_sv
+    Ti : Ti_sv
+    V : V_sv
+    Cr : Cr_pv
+    Mn : Mn_pv
+    Fe : Fe
+    Co : Co
+    Ni : Ni
+    Cu : Cu
+    Zn : Zn
+    Ga : Ga_d
+    Ge : Ge_d
+    As : As
+    Se : Se
+    Br : Br
+    Kr : Kr
+    Rb : Rb_sv
+    Sr : Sr_sv
+    Y : Y_sv
+    Zr : Zr_sv
+    Nb : Nb_sv
+    Mo : Mo_sv
+    Tc : Tc_pv
+    Ru : Ru_pv
+    Rh : Rh_pv
+    Pd : Pd
+    Ag : Ag
+    Cd : Cd
+    In : In_d
+    Sn : Sn_d
+    Sb : Sb
+    Te : Te
+    I : I
+    Xe : Xe
+    Cs : Cs_sv
+    Ba : Ba_sv
+    La : La
+    Ce : Ce
+    Pr : Pr_3
+    Nd : Nd_3
+    Pm : Pm_3
+    Sm : Sm_3
+    Eu : Eu_2
+    Gd : Gd_3
+    Tb : Tb_3
+    Dy : Dy_3
+    Ho : Ho_3
+    Er : Er_3
+    Tm : Tm_3
+    Yb : Yb_2
+    Lu : Lu_3
+    Hf : Hf_pv
+    Ta : Ta_pv
+    W : W_sv
+    Re : Re
+    Os : Os
+    Ir : Ir
+    Pt : Pt
+    Au : Au
+    Hg : Hg
+    Tl : Tl_d
+    Pb : Pb_d
+    Bi : Bi_d
+    Po : Po_d
+    At : At
+    Rn : Rn
+    Fr : Fr_sv
+    Ra : Ra_sv
+    Ac : Ac
+    Th : Th
+    Pa : Pa
+    U : U
+    Np : Np
+    Pu : Pu
+    Am : Am
+    Cm : Cm
+    Cf : Cf
+  GW:
+    Ac: Ac
+    Ag: Ag_sv_GW
+    Al: Al_GW
+    Ar: Ar_GW
+    As: As_GW
+    At: At_d_GW
+    Au: Au_sv_GW
+    B: B_GW
+    Ba: Ba_sv_GW
+    Be: Be_sv_GW
+    Bi: Bi_d_GW
+    Br: Br_GW
+    C: C_GW
+    Ca: Ca_sv_GW
+    Cd: Cd_sv_GW
+    Ce: Ce_GW
+    Cl: Cl_GW
+    Co: Co_sv_GW
+    Cr: Cr_sv_GW
+    Cs: Cs_sv_GW
+    Cu: Cu_sv_GW
+    Dy: Dy_3
+    Er: Er_3
+    Eu: Eu
+    F: F_GW
+    Fe: Fe_sv_GW
+    Ga: Ga_d_GW
+    Gd: Gd
+    Ge: Ge_d_GW
+    H: H_GW
+    He: He_GW
+    Hf: Hf_sv_GW
+    Hg: Hg_sv_GW
+    Ho: Ho_3
+    I: I_GW
+    In: In_d_GW
+    Ir: Ir_sv_GW
+    K: K_sv_GW
+    Kr: Kr_GW
+    La: La_GW
+    Li: Li_sv_GW
+    Lu: Lu_3
+    Mg: Mg_sv_GW
+    Mn: Mn_sv_GW
+    Mo: Mo_sv_GW
+    N: N_GW
+    Na: Na_sv_GW
+    Nb: Nb_sv_GW
+    Nd: Nd_3
+    Ne: Ne_GW
+    Ni: Ni_sv_GW
+    Np: Np
+    O: O_GW
+    Os: Os_sv_GW
+    P: P_GW
+    Pa: Pa
+    Pb: Pb_d_GW
+    Pd: Pd_sv_GW
+    Pm: Pm_3
+    Po: Po_d_GW
+    Pr: Pr_3
+    Pt: Pt_sv_GW
+    Pu: Pu
+    Rb: Rb_sv_GW
+    Re: Re_sv_GW
+    Rh: Rh_sv_GW
+    Rn: Rn_d_GW
+    Ru: Ru_sv_GW
+    S: S_GW
+    Sb: Sb_d_GW
+    Sc: Sc_sv_GW
+    Se: Se_GW
+    Si: Si_GW
+    Sm: Sm_3
+    Sn: Sn_d_GW
+    Sr: Sr_sv_GW
+    Ta: Ta_sv_GW
+    Tb: Tb_3
+    Tc: Tc_sv_GW
+    Te: Te_GW
+    Th: Th
+    Ti: Ti_sv_GW
+    Tl: Tl_d_GW
+    Tm: Tm_3
+    U: U
+    V: V_sv_GW
+    W: W_sv_GW
+    Xe: Xe_GW
+    Y: Y_sv_GW
+    Yb: Yb_3
+    Zn: Zn_sv_GW
+    Zr: Zr_sv_GW
