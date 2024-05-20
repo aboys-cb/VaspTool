@@ -1252,6 +1252,8 @@ class VaspTool:
 
             self.structure = job.final_structure
         count=1
+        best_result=None
+
         for basis_setting in Lobsterin.get_all_possible_basis_functions(self.structure,
                                                                   get_pot_symbols(self.structure.species)):
             # # # 进行scf自洽计算
@@ -1271,12 +1273,20 @@ class VaspTool:
             cohp_job.run()
             cohp_job.run_lobster()
             result=cohp_job.post_processing()
-            print(result)
+            result["basis"]=basis_setting
+
+
+            if best_result is None:
+                best_result=result
+            else:
+                if result["charge_spilling"] < best_result["charge_spilling"]:
+                    best_result=result
+
             count+=1
 
+        structure_info.update(best_result)
 
-
-
+        return structure_info
 
 
     def cb_sr(self, structure_info, path ):

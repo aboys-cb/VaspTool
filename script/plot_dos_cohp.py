@@ -155,7 +155,6 @@ class DosCohpPlotter:
             for orb in config["orb"]:
 
                 for _orb in self.compose_orbit(orb):
-
                     _cohp = complete_cohp.get_summed_cohp_by_label_and_orbital_list(label,[_orb] * len(label))
                     if cohp is None:
                         cohp=_cohp
@@ -341,15 +340,15 @@ if __name__ == '__main__':
         "cohpcar_path":"../cache/Cs1Ag0.5Bi0.5I3/COHPCAR.lobster",
         "poscar_path":"../cache/Cs1Ag0.5Bi0.5I3/POSCAR",
         "projected": {"Bi(6s)-I(5p)":{
-                                "label":(185,190),
+                                "label":(185,208),
                                 "orb":["6s-5p"]
                             },
                         "Bi(6p)-I(5p)": {
-                            "label": (185, 190),
+                            "label": (185, 208),
                             "orb": ["6p-5p"]
                         },
                         "Ag(4d)-I(5p)": {
-                            "label": (161, 166),
+                            "label": (161, 184),
                             "orb": ["4d-5p"]
                         }
         }
@@ -358,5 +357,5 @@ if __name__ == '__main__':
     # 这里可以是分轨道  比如"6px-5px" 如果不是分轨道  会把所有的加和
     plotter=DosCohpPlotter()
     plotter.parse_config(dos_conf,cohp_conf)
-    plotter.get_plot(invert_axes=True,cohp_lim=(-5,5),energy_lim=(-2,2))
+    plotter.get_plot(invert_axes=True,cohp_lim=(-20,30),energy_lim=(-2,2),density_lim=(0,10))
     plt.savefig("dos_and_cohp.png")
