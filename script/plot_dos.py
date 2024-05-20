@@ -10,10 +10,7 @@ from pymatgen.electronic_structure.plotter import DosPlotter
 from pymatgen.io.vasp import Vasprun
 
 import palettable
-plt.rc('font',family='Times New Roman')
-# plt.rcParams['axes.labelsize'] = 14
-# plt.rcParams['font.size'] = 14
-plt.rcParams['mathtext.default'] = 'regular'
+plt.style.use("./science.mplstyle")
 
 
 
@@ -74,9 +71,9 @@ class MyDosPlotter(DosPlotter):
                     if self.stack:
                         ax.fill(x, y, color=colors[idx % n_colors], label=str(key))
                     elif spin == Spin.down and beta_dashed:
-                        ax.plot(x, y, color=colors[idx % n_colors], label=str(key), linestyle="--", linewidth=2)
+                        ax.plot(x, y, color=colors[idx % n_colors], label=str(key), linestyle="--" )
                     else:
-                        ax.plot(x, y, color=colors[idx % n_colors], label=str(key), linewidth=2)
+                        ax.plot(x, y, color=colors[idx % n_colors], label=str(key) )
 
         if xlim:
             ax.set_xlim(xlim)
@@ -94,24 +91,24 @@ class MyDosPlotter(DosPlotter):
         if self.zero_at_efermi:
             xlim = ax.get_xlim()
             ylim = ax.get_ylim()
-            ax.plot(xlim, [0, 0], "k--", linewidth=1) if invert_axes else ax.plot([0, 0], ylim, "k--", linewidth=1)
+            ax.plot(xlim, [0, 0], "k--" ) if invert_axes else ax.plot([0, 0], ylim, "k--" )
 
         if invert_axes:
-            ax.axvline(x=0, color="k", linestyle="-", linewidth=2)
-            ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=2, integer=True))
+            ax.axvline(x=0, color="k", linestyle="-" )
+            # ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=2, integer=True))
             # ax.yaxis.set_major_locator(ticker.MaxNLocator( integer=True))
-            ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
-            ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+            # ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+            # ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
 
         else:
 
             # ax.xaxis.set_major_locator(ticker.MaxNLocator( integer=True))
-            ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=2, integer=True))
-            ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
-            ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+            # ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=2, integer=True))
+            # ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+            # ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
 
-            ax.axhline(y=0, color="k", linestyle="-", linewidth=2)
-        ax.tick_params(axis='both', which='both', direction='in')
+            ax.axhline(y=0, color="k", linestyle="-" )
+        # ax.tick_params(axis='both', which='both', direction='in')
         # ax.tick_params(axis='both', which='both', direction='in')
         # plt.xticks(fontsize=16)
         # plt.yticks(fontsize=16)
@@ -124,18 +121,20 @@ class MyDosPlotter(DosPlotter):
 
     def plot_all(self, dos_conf, invert_axes=True, energy_lim=None, density_lim=None):
         orb_map = ["s", "p", "d", "f"]
+
+
+
+
+
         if invert_axes:
             xlim, ylim = density_lim, energy_lim
-            fig, axes = plt.subplots(1, len(dos_conf), figsize=(8, 6), sharex=True, sharey=True)
+            fig, axes = plt.subplots(1, len(dos_conf),   sharex=True, sharey=True)
 
 
         else:
             xlim, ylim = energy_lim, density_lim
-            plt.rcParams['xtick.labelsize'] = int(6.5 * 2.5)
-            plt.rcParams['ytick.labelsize'] = int(6.5 * 2.5)
-            plt.rcParams['axes.labelsize'] = int(6.5 * 2.8)
-            plt.rcParams['legend.fontsize'] = int(6.5 * 2.5)
-            fig, axes = plt.subplots(len(dos_conf), 1, figsize=(6.4, 1.6 * len(dos_conf)), sharex=True, sharey=True)
+
+            fig, axes = plt.subplots(len(dos_conf), 1,   sharex=True, sharey=True)
         if len(dos_conf)==1:
             axes=[axes]
 
@@ -170,12 +169,12 @@ class MyDosPlotter(DosPlotter):
                 if col == 0:
                     axes[0].set_ylabel("Energies (eV)" )
 
-                axes[col].set_xlabel("DOS (eV$^{-1}$)" )
+                axes[col].set_xlabel("DOS (states/eV)" )
             else:
                 if col == len(dos_conf) - 1:
                     axes[col].set_xlabel("Energies (eV)" )
 
-                axes[col].set_ylabel("DOS (eV$^{-1}$)" )
+                axes[col].set_ylabel("DOS (states/eV)" )
 
             self._doses.clear()
 
@@ -185,12 +184,12 @@ class MyDosPlotter(DosPlotter):
 if __name__ == '__main__':
     plotter = MyDosPlotter()
     dos_conf = [
-        {"path": "DataBase/sci1/dos/Cs1Ag0.5Bi0.5I3.xml",
+        {"path": "../cache/Cs1Ag0.5Bi0.5I3/vasprun.xml",
          "projected": {"I": ["p"],"Ag": [ "d"],"Bi": ["p" ]   },
          },
-        # {"path": "DataBase/sci1/dos/Cs1Ag0.5Bi0.375Ir0.125I3.xml",
-        #  "projected":{"I": ["p"],"Ag": [ "d"],"Bi": ["p" ], "Ir":[ "d"] },
-        #  },
+        {"path": "../cache/Cs1Ag0.5Bi0.5I3/vasprun.xml",
+         "projected":{"I": ["p"],"Ag": [ "d"],"Bi": ["p" ]  },
+         },
 
     ]
     plotter.plot_all(dos_conf, energy_lim=(-2, 2), density_lim=(-10, 10), invert_axes=False)
