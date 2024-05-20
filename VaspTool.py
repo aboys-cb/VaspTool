@@ -2,9 +2,11 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2024/5/9 22:40
 # @Author  : 兵
-# @mail    : 1747193328@qq.com
+# @email    : 1747193328@qq.com
 import os
 from monty.serialization import loadfn
+
+
 os.environ["PMG_DEFAULT_FUNCTIONAL"] = r"PBE_54"
 
 config = loadfn("./config.yaml")
@@ -34,7 +36,7 @@ import os
 import subprocess
 
 from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
-
+from pymatgen.io.lobster import Lobsterin,Lobsterout
 from typing import *
 from pymatgen.core import Structure, Composition, Element, Lattice
 from pymatgen.io.vasp.inputs import Incar, Poscar, Kpoints, VaspInput, Potcar, PotcarSingle
@@ -600,7 +602,7 @@ class JobBase():
 
                 Path(file).unlink()
         return False
-    def run(self, timeout=None ):
+    def run(self, timeout=None ,lobster:Lobsterin|None=None):
 
         if self.open_soc  :
             # 如果打开了soc 并且 scf  或band in
@@ -613,7 +615,9 @@ class JobBase():
         start = datetime.datetime.now()
         logging.info("\t开始计算"  )
         vasp_input.write_input(output_dir=self.run_dir)
+        if lobster:
 
+            lobster.write_INCAR(incar_input=self.run_dir.joinpath("INCAR"),incar_output=self.run_dir.joinpath("INCAR"),poscar_input=self.run_dir.joinpath("POSCAR"))
         vasp_cmd = vasp_cmd or SETTINGS.get("PMG_VASP_EXE")  # type: ignore[assignment]
         if not vasp_cmd:
             raise ValueError("No VASP executable specified!")
@@ -635,14 +639,15 @@ class StructureRelaxationJob(JobBase):
     def __init__(self, **kwargs):
         super().__init__(step_type="sr",**kwargs )
         self.run_count = 3
-    def run(self,   timeout=None ):
+    def run(self,**kwargs):
+
         self.final_structure = self.structure
 
         if self.check_cover():
             self.post_processing()
             return self
         try:
-            super().run( timeout )
+            super().run( **kwargs )
             self.post_processing()
         except:
 
@@ -657,7 +662,7 @@ class StructureRelaxationJob(JobBase):
                         logging.info("复制CONTCAR继续优化。。。")
                         self.run_count-=1
                         self.structure=Structure.from_file(self.run_dir.joinpath(f"CONTCAR"))
-                        return self.run(timeout )
+                        return self.run(**kwargs )
         return self
     def post_processing(self):
 
@@ -681,6 +686,8 @@ class SCFJob(JobBase):
         if self.function in [ "diag"]:
             eig = Eigenval(self.path.joinpath("pbe/scf/EIGENVAL").as_posix())
             incar["NBANDS"] =eig.nbands*10
+
+
         return incar
 
     @property
@@ -695,14 +702,14 @@ class SCFJob(JobBase):
             return BaseKpoints(self.kpoints_type).get_line_kpoints(self.path,self.function,self.structure)
         return super().kpoints
 
-    def run(self):
+    def run(self,**kwargs):
         if self.check_cover():
             return self
         if self.function in ["hse", "gw", "r2scan", "scan", "mbj", "diag"]:
             if self.path.joinpath("pbe/scf").exists():
                 cp_file(self.path.joinpath("pbe/scf/WAVECAR"),  self.run_dir)
 
-        return super().run(  )
+        return super().run(**kwargs)
 
     def post_processing(self):
         """
@@ -712,6 +719,61 @@ class SCFJob(JobBase):
         vasprun = Vasprun(self.run_dir.joinpath(f"vasprun.xml"), parse_potcar_file=False, parse_dos=False)
 
         return {f"efermi_{self.function}":vasprun.efermi}
+
+
+class LobsterJob(JobBase):
+    result_label = ["basis","charge_spilling"]
+    def __init__(self,basis,  **kwargs):
+        self.basis=basis
+
+        super().__init__( step_type="scf", **kwargs)
+
+    @property
+    def run_dir(self) -> Path:
+        return self.path.joinpath(f"{self.function}/cohp/{self.basis}")
+
+
+    def build_lobster(self,basis_setting):
+        lobsterin_dict = {
+            # this basis set covers most elements
+            "basisSet": "pbeVaspFit2015",
+            # energies around e-fermi
+            "COHPstartEnergy": -10.0,
+            "COHPendEnergy": 5.0,
+        }
+        # every interaction with a distance of 6.0 is checked
+        lobsterin_dict["cohpGenerator"] = "from 0.1 to 6.0 orbitalwise"
+        # the projection is saved
+        lobsterin_dict["saveProjectionToFile"] = True
+        if self.incar["ISMEAR"] == 0:
+            lobsterin_dict["gaussianSmearingWidth"] = self.incar["SIGMA"]
+        basis = [f"{key} {value}" for key, value in basis_setting.items()]
+        lobsterin_dict["basisfunctions"] = basis
+
+        self.lobster = Lobsterin(lobsterin_dict)
+        self.lobster.write_lobsterin(self.run_dir.joinpath("lobsterin").as_posix())
+
+        return self.lobster
+    def run_lobster(self):
+        logging.info("\t开始运行lobster")
+        with cd(self.run_dir), open("lobster.out", "w") as f_std, open("lobster.err", "w", buffering=1) as f_err:
+
+            subprocess.check_call(["lobster"], stdout=f_std, stderr=f_err, )
+        logging.info("\tlobster分析结束")
+
+    def run(self,**kwargs):
+        if self.check_cover():
+            return self
+
+
+        return super().run(lobster=self.lobster,**kwargs)
+
+    def post_processing(self):
+        result={}
+        lobsterout=Lobsterout(self.run_dir.joinpath("lobsterout").as_posix())
+        result["basis"]=lobsterout.basis_functions
+        result["charge_spilling"] =lobsterout.charge_spilling
+        return result
 class DosJob(JobBase):
     result_label = ["dos_efermi", "dos_vbm", "dos_cbm", "dos_gap"]
     def __init__(self,  **kwargs):
@@ -727,7 +789,8 @@ class DosJob(JobBase):
             if outcar.data["CMBJ"]:
                 incar["CMBJ"]=outcar.data["CMBJ"][-1][0]
         return incar
-    def run(self,*arg):
+    def run(self,**kwargs):
+
         if self.check_cover():
             return self
         cp_file(self.path.joinpath(f"{self.function}/scf/CHGCAR"),  self.run_dir)
@@ -735,7 +798,7 @@ class DosJob(JobBase):
 
         cp_file(self.path.joinpath(f"{self.function}/scf/WAVECAR"), self.run_dir)
 
-        return super().run(   )
+        return super().run( **kwargs  )
     def post_processing(self):
         """
 
@@ -793,13 +856,13 @@ class BandStructureJob(JobBase):
         return BaseKpoints(self.kpoints_type).get_line_kpoints(self.path,self.function,self.structure)
 
 
-    def run(self,*args):
+    def run(self,**kwargs):
         if self.check_cover():
             return self
         cp_file(self.path.joinpath(f"{self.function}/scf/CHGCAR"), self.run_dir )
         cp_file(self.path.joinpath(f"{self.function}/scf/CHG"), self.run_dir)
         cp_file(self.path.joinpath(f"{self.function}/scf/WAVECAR"), self.run_dir)
-        return super().run(  )
+        return super().run(**kwargs  )
     def post_processing(self):
         if self.function != "pbe":
 
@@ -853,10 +916,10 @@ class  StaticDielectricJob(JobBase):
     def __init__(self,  **kwargs):
         super().__init__(job_type="optic_dielectric",step_type= "dielectric", **kwargs)
 
-    def run(self,*args ):
+    def run(self,**kwargs ):
         if self.check_cover():
             return self
-        return super().run(  )
+        return super().run( **kwargs )
 
     def post_processing(self):
         outcar = Outcar(self.run_dir.joinpath("OUTCAR").as_posix())
@@ -890,11 +953,11 @@ class  OpticJob(JobBase):
             eig = Eigenval(self.path.joinpath(f"{self.function}/scf/EIGENVAL").as_posix())
             incar["NBANDS"] = eig.nbands*2
         return incar
-    def run(self,*args ):
+    def run(self,**kwargs ):
         if self.check_cover():
             return self
         cp_file(self.path.joinpath(f"{self.function}/scf/WAVECAR"),self.run_dir)
-        return super().run(  )
+        return super().run(**kwargs  )
     def post_processing(self):
         vasp = Vasprun(self.run_dir.joinpath(f"vasprun.xml"), parse_potcar_file=False)
 
@@ -1175,6 +1238,47 @@ class VaspTool:
             structure_info["structure"]=self.structure
 
         return structure_info
+
+    def count_cohp(self, structure_info, path:Path="./"):
+        self.structure :Structure= structure_info["structure"]
+
+        if not self.disable_relaxation:
+            job = StructureRelaxationJob(structure=self.structure,
+                                         path=path,
+                                         job_type="band_structure",
+                                         function="pbe",
+                                         **self.job_args
+                                         ).run()
+
+            self.structure = job.final_structure
+        count=1
+        for basis_setting in Lobsterin.get_all_possible_basis_functions(self.structure,
+                                                                  get_pot_symbols(self.structure.species)):
+            # # # 进行scf自洽计算
+
+            cohp_job=LobsterJob(
+                basis=count,
+                structure=self.structure,
+                path=path,
+                job_type="cohp",
+                function="pbe",
+                **self.job_args
+                           )
+
+            cohp_job.build_lobster(basis_setting)
+
+
+            cohp_job.run()
+            cohp_job.run_lobster()
+            result=cohp_job.post_processing()
+            print(result)
+            count+=1
+
+
+
+
+
+
     def cb_sr(self, structure_info, path ):
         self.structure :Structure= structure_info["structure"]
         job = StructureRelaxationJob(structure=self.structure, path=path,
@@ -1237,6 +1341,9 @@ class VaspTool:
                     struct_info = self.count_optic_dielectric(struct_info, path)
                 elif calculate_type=="sr":
                     self.cb_sr(struct_info,path)
+                elif calculate_type=="cohp":
+                    struct_info = self.count_cohp(struct_info, path)
+
 
 
             except KeyboardInterrupt:

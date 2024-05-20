@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2024/5/9 22:40
 # @Author  : 兵
-# @mail    : 1747193328@qq.com
+# @email    : 1747193328@qq.com
 import numpy as np
 from matplotlib import pyplot as plt, ticker
 from pymatgen.electronic_structure.core import OrbitalType, Spin
@@ -112,7 +112,7 @@ class MyDosPlotter(DosPlotter):
 
             ax.axhline(y=0, color="k", linestyle="-", linewidth=2)
         ax.tick_params(axis='both', which='both', direction='in')
-        ax.tick_params(axis='both', which='both', direction='in')
+        # ax.tick_params(axis='both', which='both', direction='in')
         # plt.xticks(fontsize=16)
         # plt.yticks(fontsize=16)
         # plt.tick_params(labelsize=16)

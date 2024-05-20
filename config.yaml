@@ -10,6 +10,8 @@ SETTING:
 #磁矩 如果体系里 出现了一下的元素 就设置磁矩 打开自旋
 MAGMOM:
   Co : 0.6
+  Fe : 1
+  Ni : 1
 #U值 给程序传入-u参数 就会开启+u 如果u值出现在下面的配置中 就设置 否则不开启
 
 U:
@@ -85,6 +87,9 @@ KPOINTS:
       pbe: 6000
       pbesol: 6000
       hse: 6000
+  cohp :
+    scf:
+      default : 800
 
 
 POTCAR:

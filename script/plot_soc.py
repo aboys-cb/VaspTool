@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2024/5/9 22:40
 # @Author  : 兵
-# @mail    : 1747193328@qq.com
+# @email    : 1747193328@qq.com
 import itertools
 import os
 import platform
