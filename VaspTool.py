@@ -316,7 +316,7 @@ class BaseIncar(Incar):
 
         elif system=="dielectric":
             base.update({
-                "SIGMA": 0.01 , "LEPSILON": True, "LPEAD": True, "IBRION": 8
+                "ISTART": 1,"SIGMA": 0.05 , "LEPSILON": True, "LPEAD": True, "IBRION": 8,"LWAVE":False,"LCHARG":False
             })
             base.pop("NPAR")
 
@@ -523,7 +523,7 @@ class JobBase():
             data_u =config.get("U",{})
 
             if not data_u:
-                logging.error("\t开启DFT+U必须在配置文件设置U,开启失败!")
+                logging.warning("\t开启DFT+U必须在配置文件设置U,开启失败!")
                 return incar
             LDAUL = []
             LDAUU = []
@@ -535,12 +535,14 @@ class JobBase():
                     LDAUU.append(str(data_u[elem.name]["LDAUU"]))
                     LDAUJ.append(str(data_u[elem.name]["LDAUJ"]))
                 else:
+
                     LDAUL.append("-1")
                     LDAUU.append("0")
                     LDAUJ.append("0")
-            if all([i =="-1" for i  in LDAUL]):
-                logging.error("\t在配置文件中没有找到该体系的U值,开启失败!")
 
+
+            if all([i =="-1" for i  in LDAUL]):
+                logging.warning("\t在配置文件中没有找到该体系的U值,开启失败!")
                 return incar
             incar["LDAU"] = True
             incar["LDAUTYPE"] = 2
@@ -602,7 +604,7 @@ class JobBase():
 
                 Path(file).unlink()
         return False
-    def run(self, timeout=None ,lobster:Lobsterin|None=None):
+    def run(self, timeout=None ,lobster=None):
 
         if self.open_soc  :
             # 如果打开了soc 并且 scf  或band in
@@ -722,7 +724,7 @@ class SCFJob(JobBase):
 
 
 class LobsterJob(JobBase):
-    result_label = ["basis","charge_spilling"]
+    result_label = ["basis","charge_spilling","best_path"]
     def __init__(self,basis,  **kwargs):
         self.basis=basis
 
@@ -773,6 +775,7 @@ class LobsterJob(JobBase):
         lobsterout=Lobsterout(self.run_dir.joinpath("lobsterout").as_posix())
         result["basis"]=lobsterout.basis_functions
         result["charge_spilling"] =lobsterout.charge_spilling
+        result["best_path"]=self.run_dir
         return result
 class DosJob(JobBase):
     result_label = ["dos_efermi", "dos_vbm", "dos_cbm", "dos_gap"]
@@ -827,7 +830,7 @@ class DosJob(JobBase):
         return result
 
 class BandStructureJob(JobBase):
-    result_label = ["direct", "band_gap", "cbm", "vbm", "efermi"]
+    result_label = ["direct", "band_gap", "cbm", "vbm", "efermi","m_e","m_h"]
     def __init__(self,  **kwargs):
         super().__init__(job_type="band_structure", step_type="band", **kwargs)
 
@@ -862,7 +865,40 @@ class BandStructureJob(JobBase):
         cp_file(self.path.joinpath(f"{self.function}/scf/CHGCAR"), self.run_dir )
         cp_file(self.path.joinpath(f"{self.function}/scf/CHG"), self.run_dir)
         cp_file(self.path.joinpath(f"{self.function}/scf/WAVECAR"), self.run_dir)
+
         return super().run(**kwargs  )
+
+    def calculate_effective_mass(self,distance, energy, kpoint_index):
+
+
+        center_value = energy[kpoint_index]
+
+        # 初始化左右两侧的索引变量
+        left_index = kpoint_index
+        right_index = kpoint_index
+
+        # 向左遍历
+        while left_index > 0 and abs(energy[left_index] - center_value) <= 0.1:
+            left_index -= 1
+
+        # 向右遍历
+        while right_index < len(energy) - 1 and abs(energy[right_index] - center_value) <= 0.1:
+            right_index += 1
+
+        # 如果找的点比较少 往下阔一点
+
+        num = 5 - (right_index - left_index)
+
+        if num > 0:
+            if left_index - num >= 0:
+                left_index -= num
+            else:
+                right_index += num
+        energy *= 0.036749
+        distance *= 0.5291772108
+        coefficients = np.polyfit(distance[left_index:right_index], energy[left_index:right_index], 2)
+        return 0.5 / coefficients[0]
+
     def post_processing(self):
         if self.function != "pbe":
 
@@ -876,17 +912,40 @@ class BandStructureJob(JobBase):
             line_mode=False
 
         vasprun = BSVasprun(self.run_dir.joinpath( "vasprun.xml").as_posix())
-
-        bs = vasprun.get_band_structure(line_mode=line_mode, force_hybrid_mode=force_hybrid_mode)
-        band_gap = bs.get_band_gap()
         result = {}
 
+        bs = vasprun.get_band_structure(line_mode=line_mode, force_hybrid_mode=force_hybrid_mode)
+
+
+        band_gap = bs.get_band_gap()
+        vbm=bs.get_vbm()
+        cbm=bs.get_cbm()
         result[f"direct_{self.function}"] = band_gap['direct']
         result[f"band_gap_{self.function}"] = band_gap['energy']
-        result[f"vbm_{self.function}"] = bs.get_vbm()["energy"]
-        result[f"cbm_{self.function}"] = bs.get_cbm()["energy"]
+        result[f"vbm_{self.function}"] = vbm["energy"]
+        result[f"cbm_{self.function}"] = cbm["energy"]
         result[f"efermi_{self.function}"] = vasprun.efermi
+        try:
+            if not bs.is_metal():
 
+                spin = list(cbm["band_index"].keys())[0]
+                index=list(cbm["band_index"].values())[0][0]
+
+                result[f"m_e_{self.function}"] =self.calculate_effective_mass(np.array(bs.distance),
+                                                                              bs.bands[spin][index],
+                                                                              cbm["kpoint_index"][0]
+                                                                              )
+
+                spin = list(vbm["band_index"].keys())[0]
+                index = list(vbm["band_index"].values())[0][0]
+
+                result[f"m_h_{self.function}"] = self.calculate_effective_mass(np.array(bs.distance),
+                                                                               bs.bands[spin][index],
+                                                                               vbm["kpoint_index"][0]
+                                                                               )
+
+        except:
+            pass
         if not line_mode:
             return result
         for spin, bands in bs.bands.items():
@@ -919,6 +978,7 @@ class  StaticDielectricJob(JobBase):
     def run(self,**kwargs ):
         if self.check_cover():
             return self
+        cp_file(self.path.joinpath(f"{self.function}/scf/WAVECAR"), self.run_dir)
         return super().run( **kwargs )
 
     def post_processing(self):
@@ -1148,9 +1208,40 @@ class VaspTool:
         structure_info.update(result)
 
         return structure_info
+    def count_optic(self, structure_info: pd.Series, path:Path):
+
+        self.structure = structure_info["structure"]
+        # 进行结构优化
+        # return self.count_optic_dielectric_by_gw_bse(structure_info,path)
+
+        for function in self.functions:
+            if not self.disable_relaxation:
+                job=StructureRelaxationJob(structure=self.structure, path=path,
+                                           job_type="optic_dielectric",   function=function,
+                                           **self.job_args).run( )
+                self.structure=job.final_structure
+            # # # 进行scf自洽计算
+            scf_job=SCFJob(structure=self.structure, path=path,
+                           job_type="optic_dielectric",   function=function,
+                           **self.job_args).run()
+
+            result =scf_job.post_processing()
+            structure_info.update(result)
 
 
-    def count_optic_dielectric(self, structure_info: pd.Series, path:Path):
+            optic_job = OpticJob(structure=self.structure, path=path,
+                                 function=function, **self.job_args).run()
+
+            result = optic_job.post_processing()
+            structure_info.update(result)
+            structure_info[structure_info.index != 'structure'].to_csv(path.joinpath(f"{function}/result_{function}.csv"))
+
+            structure_info["structure"]=self.structure
+
+
+        return structure_info
+
+    def count_dielectric(self, structure_info: pd.Series, path:Path):
 
         self.structure = structure_info["structure"]
         # 进行结构优化
@@ -1170,17 +1261,12 @@ class VaspTool:
             result =scf_job.post_processing()
             structure_info.update(result)
             # #进行介电常数的
-            # dielectric_job = StaticDielectricJob(self.structure, path,
-            #                   function, **self.job_args).run()
-            #
-            # result = dielectric_job.post_processing()
-            # structure_info.update(result)
+            dielectric_job = StaticDielectricJob(structure=self.structure, path=path,
+                              function=function, **self.job_args).run()
 
-            optic_job = OpticJob(structure=self.structure, path=path,
-                                 function=function, **self.job_args).run()
-
-            result = optic_job.post_processing()
+            result = dielectric_job.post_processing()
             structure_info.update(result)
+
             structure_info[structure_info.index != 'structure'].to_csv(path.joinpath(f"{function}/result_{function}.csv"))
 
             structure_info["structure"]=self.structure
@@ -1285,6 +1371,7 @@ class VaspTool:
             count+=1
 
         structure_info.update(best_result)
+        structure_info[structure_info.index != 'structure'].to_csv(path.joinpath(f"/pbe/cohp/result.csv"))
 
         return structure_info
 
@@ -1335,9 +1422,14 @@ class VaspTool:
 
             elif calculate_type=="optic":
                 self.add_column(structure_dataframe,SCFJob.result_label ,f)
-                self.add_column(structure_dataframe,StaticDielectricJob.result_label ,f)
                 self.add_column(structure_dataframe,OpticJob.result_label ,f)
+            elif calculate_type=="dielectric":
+                self.add_column(structure_dataframe,SCFJob.result_label ,f)
 
+                self.add_column(structure_dataframe,StaticDielectricJob.result_label ,f)
+
+            elif calculate_type=="cohp":
+                self.add_column(structure_dataframe,LobsterJob.result_label,f)
 
         for index, struct_info in structure_dataframe.iterrows():
             try:
@@ -1348,7 +1440,10 @@ class VaspTool:
                 if calculate_type == "band":
                     struct_info = self.count_band_structure(struct_info, path)
                 elif calculate_type == "optic":
-                    struct_info = self.count_optic_dielectric(struct_info, path)
+                    struct_info = self.count_optic(struct_info, path)
+                elif calculate_type=="dielectric":
+                    struct_info = self.count_dielectric(struct_info, path)
+
                 elif calculate_type=="sr":
                     self.cb_sr(struct_info,path)
                 elif calculate_type=="cohp":

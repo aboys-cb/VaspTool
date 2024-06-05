@@ -9,9 +9,36 @@ SETTING:
   dpi : 300 #图片的dpi
 #磁矩 如果体系里 出现了一下的元素 就设置磁矩 打开自旋
 MAGMOM:
-  Co : 0.6
-  Fe : 1
-  Ni : 1
+    Ce: 5
+    Ce3+: 1
+    Co: 0.6
+    Co3+: 0.6
+    Co4+: 1
+    Cr: 5
+    Dy3+: 5
+    Er3+: 3
+    Eu: 10
+    Eu2+: 7
+    Eu3+: 6
+    Fe: 5
+    Gd3+: 7
+    Ho3+: 4
+    La3+: 0.6
+    Lu3+: 0.6
+    Mn: 5
+    Mn3+: 4
+    Mn4+: 3
+    Mo: 5
+    Nd3+: 3
+    Ni: 5
+    Pm3+: 4
+    Pr3+: 2
+    Sm3+: 5
+    Tb3+: 6
+    Tm3+: 2
+    V: 5
+    W: 5
+    Yb3+: 1
 #U值 给程序传入-u参数 就会开启+u 如果u值出现在下面的配置中 就设置 否则不开启
 
 U:
@@ -19,12 +46,39 @@ U:
     LDAUL : 2
     LDAUU : 3.32
     LDAUJ : 0
-
+  Cr:
+    LDAUL: 2
+    LDAUU: 3.7
+    LDAUJ: 0
+  Fe:
+    LDAUL: 2
+    LDAUU: 5.3
+    LDAUJ: 0
+  Mn:
+    LDAUL: 2
+    LDAUU: 3.9
+    LDAUJ: 0
+  Mo:
+    LDAUL: 2
+    LDAUU: 4.38
+    LDAUJ: 0
+  Ni:
+    LDAUL: 2
+    LDAUU: 6.2
+    LDAUJ: 0
+  V:
+    LDAUL: 2
+    LDAUU: 3.25
+    LDAUJ: 0
+  W:
+    LDAUL: 2
+    LDAUU: 6.2
+    LDAUJ: 0
 
 
 INCAR :
   SYSTEM : BaseIncar
-  EDIFF : 1e-06 #HSE会自动将成-4 加快计算 如果需要修改 程序162行左右HSE_EDIFF
+  EDIFF : 1e-08 #HSE会自动将成-4 加快计算 如果需要修改 程序162行左右HSE_EDIFF
   EDIFFG: -0.01
   ISPIN : 1 #其实这里设置无所谓 会根据磁性原子列表自动判断
   ISMEAR : 0
@@ -35,7 +89,7 @@ INCAR :
   ALGO : Normal #在算性质的时候 会更改 比如HSE的时候是Damped
   PREC : Normal
   GGA : PE #pbesol会更改为PS
-  LREAL : Auto
+  LREAL : False
   NPAR : 4 #在无法并行化的程序里 会删除这个参数 但不影响能带等计算
 
 KPOINTS:
@@ -45,7 +99,7 @@ KPOINTS:
       default : 3000
     scf:
       default : 3000
-      pbe : 3000
+      pbe : 6000
       hse : 3000
       scan : 3000
       r2scan : 3000
@@ -53,7 +107,7 @@ KPOINTS:
       diag : 3000
     band:
       default: 10
-      pbe: 10
+      pbe: 20
       hse: 10
       scan: 10
       r2scan: 10
@@ -61,7 +115,7 @@ KPOINTS:
       gw: 3000
     dos:
       default: 3000
-      pbe: 3000
+      pbe: 6000
       hse: 3000
       scan: 3000
       r2scan: 3000
@@ -72,7 +126,7 @@ KPOINTS:
     scf:
       default : 3000
 
-      pbe : 6000
+      pbe : 3000
       pbesol : 6000
       hse : 6000
     dielectric:
