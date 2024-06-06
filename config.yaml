@@ -126,13 +126,13 @@ KPOINTS:
     scf:
       default : 3000
 
-      pbe : 3000
+      pbe : 2000
       pbesol : 6000
       hse : 6000
     dielectric:
       default : 3000
 
-      pbe: 3000
+      pbe: 2000
       pbesol: 3000
       hse: 3000
     optic:

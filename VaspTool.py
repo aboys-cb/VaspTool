@@ -6,7 +6,7 @@
 import os
 from monty.serialization import loadfn
 
-
+__version__="1.0.0"
 os.environ["PMG_DEFAULT_FUNCTIONAL"] = r"PBE_54"
 
 config = loadfn("./config.yaml")
@@ -59,6 +59,7 @@ logging.basicConfig(
     stream=sys.stdout  # 指定输出流为sys.stdout
 
 )
+
 PotcarSingle.functional_dir["PBE_54"] = ""
 FUNCTION_TYPE = ["pbe","pbesol", "hse","scan","r2scan","mbj","gw","bse"]
 KPOINTS_TYPE = Union[int, tuple,list]
@@ -309,7 +310,7 @@ class BaseIncar(Incar):
             })
             if function == "hse":
                 base.update({
-                      "ICHARG": 2,"LREAL":False,
+                      "ICHARG": 2,"LREAL":False,"ALGO": "Normal"
                 })
             elif function in ["pbesol","pbe"]:
                 base.update({"IBRION": 8})
@@ -387,14 +388,15 @@ class BaseKpoints:
 
             function="default"
         return self.kpoints[job_type][step_type][function]
-    def get_kpoints(self,job_type,step_type,function,structure):
+
+
+    def get_kpoints(self,job_type:str,step_type:str,function:str,structure:Structure):
         kp =self.get_kpoint_setting(job_type, step_type, function)
         if isinstance(kp, int):
             kp = Kpoints.automatic_density( structure, kp).kpts[0]
         if self.kpoints_type.upper().startswith("M"):
             return Kpoints.monkhorst_automatic(kp)
         return Kpoints.gamma_automatic(kp)
-
 
 
     def get_line_kpoints(self,path:Path,function:str,structure:Structure) -> Kpoints:
@@ -471,7 +473,8 @@ class BaseKpoints:
 
 class JobBase():
     result_label = []
-    def __init__(self,structure,path,job_type,step_type,function,kpoints_type="Gamma",open_soc=False,dft_u=False,force_coverage=False, mpirun_path="mpirun", vasp_path="vasp_std",cores=1,**kwargs):
+    def __init__(self,structure,path,job_type,step_type,function,kpoints_type="Gamma",KPOINTS=None,open_soc=False,dft_u=False,force_coverage=False, mpirun_path="mpirun", vasp_path="vasp_std",cores=1,**kwargs):
+        self.test=None
         self.structure=structure
         self.path:Path=path
         self.job_type=job_type
@@ -480,6 +483,9 @@ class JobBase():
         self.open_soc=open_soc
         self.dft_u=dft_u
         self.kpoints_type=kpoints_type
+        if KPOINTS is not None:
+            assert isinstance(KPOINTS,Kpoints) ,f"自定义KPOINTS必须传入一个Kpoints对象而不是{type(KPOINTS)}"
+        self.KPOINTS=KPOINTS
         self.force_coverage=force_coverage
         self.mpirun_path=mpirun_path
         self.vasp_path=vasp_path
@@ -487,8 +493,14 @@ class JobBase():
         self.cb_energy = 4
         self.dpi=300
         self.vb_energy = -4
+        self.incar_kwargs={}
         for k,v in kwargs.items():
-            setattr(self,k,v)
+            if k.isupper():
+                #暂且把全大写的分配到incar 后面有bug再说
+                self.incar_kwargs[k]=v
+            else:
+
+                setattr(self, k, v)
 
         #要计算的类型 比如能带
         #要计算的类型的细分步骤 优化 自洽 性质等
@@ -505,6 +517,9 @@ class JobBase():
         获取vasp 计算路径
         :return:
         """
+        if self.test is not None:
+            return self.path.joinpath(f"{self.function}/{self.step_type}/{self.test}")
+
         return self.path.joinpath( f"{self.function}/{self.step_type}")
 
     @property
@@ -516,7 +531,7 @@ class JobBase():
         formula = self.structure.composition.formula.replace(" ", "")
         incar["SYSTEM"] = formula + "-" + self.function + "-" + self.step_type
         incar.has_magnetic(self.structure)
-
+        incar.update(self.incar_kwargs)
         if self.open_soc:
             incar["LSORBIT"] = True
         if self.dft_u and incar.get("LDAU") is None:
@@ -555,8 +570,12 @@ class JobBase():
     @property
     def kpoints(self) -> Kpoints:
         """Kpoints object."""
+        if self.KPOINTS is None:
+            return BaseKpoints(self.kpoints_type).get_kpoints(self.job_type,self.step_type,self.function,self.structure)
+        else:
+            return self.KPOINTS
 
-        return BaseKpoints(self.kpoints_type).get_kpoints(self.job_type,self.step_type,self.function,self.structure)
+
     @property
     def poscar(self) -> Poscar:
         """Poscar object."""
@@ -605,7 +624,6 @@ class JobBase():
                 Path(file).unlink()
         return False
     def run(self, timeout=None ,lobster=None):
-
         if self.open_soc  :
             # 如果打开了soc 并且 scf  或band in
             vasp_path =  self.vasp_path.with_name("vasp_ncl")
@@ -634,12 +652,16 @@ class JobBase():
 
         return self
     @abc.abstractmethod
-    def post_processing(self):
-        pass
+    def post_processing(self, result=None):
+        if result is None:
+            result = {}
 class StructureRelaxationJob(JobBase):
-
+    """
+    结构优化的类
+    """
     def __init__(self, **kwargs):
         super().__init__(step_type="sr",**kwargs )
+        #vasp 有时会让复制contcar 继续优化  这个是控制复制次数
         self.run_count = 3
     def run(self,**kwargs):
 
@@ -666,7 +688,9 @@ class StructureRelaxationJob(JobBase):
                         self.structure=Structure.from_file(self.run_dir.joinpath(f"CONTCAR"))
                         return self.run(**kwargs )
         return self
-    def post_processing(self):
+    def post_processing(self, result=None):
+        if result is None:
+            result = {}
 
         self.final_structure = Structure.from_file(self.run_dir.joinpath("CONTCAR"))
         self.final_structure.to(self.run_dir.parent.joinpath(f'{self.structure.composition.formula.replace(" ","")}-{self.function}.cif').as_posix())
@@ -674,7 +698,7 @@ class StructureRelaxationJob(JobBase):
 
 
 class SCFJob(JobBase):
-    result_label=["efermi"]
+
 
     def __init__(self,  **kwargs):
         super().__init__( step_type="scf", **kwargs)
@@ -713,18 +737,23 @@ class SCFJob(JobBase):
 
         return super().run(**kwargs)
 
-    def post_processing(self):
+    def post_processing(self, result=None):
+        if result is None:
+            result = {}
         """
         自洽的返回费米能级
         :return:
         """
         vasprun = Vasprun(self.run_dir.joinpath(f"vasprun.xml"), parse_potcar_file=False, parse_dos=False)
+        result[f"efermi_{self.function}"]=vasprun.efermi
+        result[f"energy_{self.function}"]=vasprun.final_energy
 
-        return {f"efermi_{self.function}":vasprun.efermi}
+
+        return result
 
 
 class LobsterJob(JobBase):
-    result_label = ["basis","charge_spilling","best_path"]
+
     def __init__(self,basis,  **kwargs):
         self.basis=basis
 
@@ -736,17 +765,10 @@ class LobsterJob(JobBase):
 
 
     def build_lobster(self,basis_setting):
-        lobsterin_dict = {
-            # this basis set covers most elements
-            "basisSet": "pbeVaspFit2015",
-            # energies around e-fermi
-            "COHPstartEnergy": -10.0,
-            "COHPendEnergy": 5.0,
-        }
+        lobsterin_dict = {"basisSet": "pbeVaspFit2015", "COHPstartEnergy": -10.0, "COHPendEnergy": 5.0,
+                          "cohpGenerator": "from 0.1 to 6.0 orbitalwise", "saveProjectionToFile": True}
         # every interaction with a distance of 6.0 is checked
-        lobsterin_dict["cohpGenerator"] = "from 0.1 to 6.0 orbitalwise"
         # the projection is saved
-        lobsterin_dict["saveProjectionToFile"] = True
         if self.incar["ISMEAR"] == 0:
             lobsterin_dict["gaussianSmearingWidth"] = self.incar["SIGMA"]
         basis = [f"{key} {value}" for key, value in basis_setting.items()]
@@ -770,15 +792,17 @@ class LobsterJob(JobBase):
 
         return super().run(lobster=self.lobster,**kwargs)
 
-    def post_processing(self):
-        result={}
+    def post_processing(self, result=None):
+        if result is None:
+            result = {}
+
         lobsterout=Lobsterout(self.run_dir.joinpath("lobsterout").as_posix())
         result["basis"]=lobsterout.basis_functions
         result["charge_spilling"] =lobsterout.charge_spilling
         result["best_path"]=self.run_dir
         return result
 class DosJob(JobBase):
-    result_label = ["dos_efermi", "dos_vbm", "dos_cbm", "dos_gap"]
+
     def __init__(self,  **kwargs):
         super().__init__(job_type="band_structure",step_type= "dos", **kwargs)
 
@@ -802,13 +826,12 @@ class DosJob(JobBase):
         cp_file(self.path.joinpath(f"{self.function}/scf/WAVECAR"), self.run_dir)
 
         return super().run( **kwargs  )
-    def post_processing(self):
-        """
+    def post_processing(self, result=None):
+        if result is None:
+            result = {}
 
-        :return:
-        """
         vasprun = Vasprun(self.run_dir.joinpath("vasprun.xml"), parse_potcar_file=False)
-        result = {}
+
 
         dos = vasprun.complete_dos
         result[f"dos_efermi_{self.function}"] = dos.efermi
@@ -830,7 +853,7 @@ class DosJob(JobBase):
         return result
 
 class BandStructureJob(JobBase):
-    result_label = ["direct", "band_gap", "cbm", "vbm", "efermi","m_e","m_h"]
+
     def __init__(self,  **kwargs):
         super().__init__(job_type="band_structure", step_type="band", **kwargs)
 
@@ -869,37 +892,32 @@ class BandStructureJob(JobBase):
         return super().run(**kwargs  )
 
     def calculate_effective_mass(self,distance, energy, kpoint_index):
+        window_size = 5
 
+        # 计算窗口的一半大小
+        half_window = window_size // 2
 
-        center_value = energy[kpoint_index]
+        # 确定窗口的左边界和右边界
+        left_boundary = max(0, kpoint_index - half_window)
+        right_boundary = min(len(energy), kpoint_index + half_window + (window_size % 2))  # 保证窗口大小为奇数
 
-        # 初始化左右两侧的索引变量
-        left_index = kpoint_index
-        right_index = kpoint_index
+        # 如果窗口左边界在数组开头，调整右边界
+        if left_boundary == 0:
+            right_boundary = min(len(energy), right_boundary + (half_window - kpoint_index))
 
-        # 向左遍历
-        while left_index > 0 and abs(energy[left_index] - center_value) <= 0.1:
-            left_index -= 1
+        # 如果窗口右边界在数组结尾，调整左边界
+        if right_boundary == len(energy):
+            right_boundary = min(len(energy), kpoint_index + half_window + (window_size % 2))
+            left_boundary = max(0, right_boundary - window_size)
 
-        # 向右遍历
-        while right_index < len(energy) - 1 and abs(energy[right_index] - center_value) <= 0.1:
-            right_index += 1
-
-        # 如果找的点比较少 往下阔一点
-
-        num = 5 - (right_index - left_index)
-
-        if num > 0:
-            if left_index - num >= 0:
-                left_index -= num
-            else:
-                right_index += num
         energy *= 0.036749
         distance *= 0.5291772108
-        coefficients = np.polyfit(distance[left_index:right_index], energy[left_index:right_index], 2)
+        coefficients = np.polyfit(distance[left_boundary:right_boundary], energy[left_boundary:right_boundary], 2)
         return 0.5 / coefficients[0]
 
-    def post_processing(self):
+    def post_processing(self, result=None):
+        if result is None:
+            result = {}
         if self.function != "pbe":
 
             force_hybrid_mode = True
@@ -912,7 +930,7 @@ class BandStructureJob(JobBase):
             line_mode=False
 
         vasprun = BSVasprun(self.run_dir.joinpath( "vasprun.xml").as_posix())
-        result = {}
+
 
         bs = vasprun.get_band_structure(line_mode=line_mode, force_hybrid_mode=force_hybrid_mode)
 
@@ -981,9 +999,11 @@ class  StaticDielectricJob(JobBase):
         cp_file(self.path.joinpath(f"{self.function}/scf/WAVECAR"), self.run_dir)
         return super().run( **kwargs )
 
-    def post_processing(self):
+    def post_processing(self, result=None):
+        if result is None:
+            result = {}
         outcar = Outcar(self.run_dir.joinpath("OUTCAR").as_posix())
-        result = {}
+
 
         result[f"dielectric_electron_{self.function}"] = outcar.dielectric_tensor[0][0]
         if self.incar.get("IBRION") == 8:
@@ -1018,10 +1038,10 @@ class  OpticJob(JobBase):
             return self
         cp_file(self.path.joinpath(f"{self.function}/scf/WAVECAR"),self.run_dir)
         return super().run(**kwargs  )
-    def post_processing(self):
+    def post_processing(self, result=None):
+        if result is None:
+            result = {}
         vasp = Vasprun(self.run_dir.joinpath(f"vasprun.xml"), parse_potcar_file=False)
-
-        result = {}
 
         result[f"dielectric_real_{self.function}"] = vasp.dielectric[1][0][0]
         result[f"dielectric_imag_{self.function}"] = vasp.dielectric[2][0][0]
@@ -1089,6 +1109,9 @@ class VaspTool:
                                     他们文件内容一致，就不再进行计算。
                                 如果为True，则不检查文件，直接计算。
         :param functions:要使用的泛函方式 pbe  hse
+        :param dft_u:是否开启加U
+        :param disable_relaxation:禁止优化
+        :param open_soc:使用vasp_ncl
         """
         if cores is None:
             cores = os.cpu_count()
@@ -1196,16 +1219,16 @@ class VaspTool:
         band_job = BandStructureJob(structure=self.structure, path=path,function= "gw", **self.job_args)
 
         band_job.run()
-        result = band_job.post_processing()
+        band_job.post_processing(structure_info)
 
         optic_job = OpticJob(structure=self.structure, path=path,function="bse", **self.job_args)
 
         cp_file(band_job.run_dir.joinpath("WAVE*"),optic_job.run_dir)
         cp_file(band_job.run_dir.joinpath("*.tmp"),optic_job.run_dir)
         optic_job.run()
-        result = optic_job.post_processing()
+        optic_job.post_processing(structure_info)
 
-        structure_info.update(result)
+
 
         return structure_info
     def count_optic(self, structure_info: pd.Series, path:Path):
@@ -1225,15 +1248,15 @@ class VaspTool:
                            job_type="optic_dielectric",   function=function,
                            **self.job_args).run()
 
-            result =scf_job.post_processing()
-            structure_info.update(result)
+            scf_job.post_processing(structure_info)
+
 
 
             optic_job = OpticJob(structure=self.structure, path=path,
                                  function=function, **self.job_args).run()
 
-            result = optic_job.post_processing()
-            structure_info.update(result)
+            optic_job.post_processing(structure_info)
+
             structure_info[structure_info.index != 'structure'].to_csv(path.joinpath(f"{function}/result_{function}.csv"))
 
             structure_info["structure"]=self.structure
@@ -1258,14 +1281,14 @@ class VaspTool:
                            job_type="optic_dielectric",   function=function,
                            **self.job_args).run()
 
-            result =scf_job.post_processing()
-            structure_info.update(result)
+            scf_job.post_processing(structure_info)
+
             # #进行介电常数的
             dielectric_job = StaticDielectricJob(structure=self.structure, path=path,
                               function=function, **self.job_args).run()
 
-            result = dielectric_job.post_processing()
-            structure_info.update(result)
+            dielectric_job.post_processing(structure_info)
+
 
             structure_info[structure_info.index != 'structure'].to_csv(path.joinpath(f"{function}/result_{function}.csv"))
 
@@ -1283,7 +1306,7 @@ class VaspTool:
         band_job.run()
         result = band_job.post_processing()
 
-    def count_band_structure(self, structure_info, path:Path="./") ->pd.Series:
+    def count_band_structure(self, structure_info , path:Path="./") ->pd.Series:
         self.structure :Structure= structure_info["structure"]
 
 
@@ -1305,20 +1328,17 @@ class VaspTool:
                            job_type="band_structure",   function=function,
                            **self.job_args).run()
 
-            result =scf_job.post_processing()
-            structure_info.update(result)
+            scf_job.post_processing(structure_info)
+
 
             dos_job = DosJob(structure=self.structure, path=path,
                              function=function, **self.job_args).run()
 
-            result=dos_job.post_processing()
-            structure_info.update(result)
-
+            dos_job.post_processing(structure_info)
             band_job = BandStructureJob(structure=self.structure, path=path,
                              function=function, **self.job_args).run()
 
-            result=band_job.post_processing()
-            structure_info.update(result)
+            band_job.post_processing(structure_info)
             self.plot_bs_dos(band_job.run_dir.joinpath(f"vasprun.xml"),dos_job.run_dir.joinpath(f"vasprun.xml"),path.joinpath(f"{function}/band_structure_dos_{function}.png"))
             structure_info[structure_info.index != 'structure'].to_csv(path.joinpath(f"{function}/result_{function}.csv"))
             structure_info["structure"]=self.structure
@@ -1369,8 +1389,9 @@ class VaspTool:
                     best_result=result
 
             count+=1
+        for k,v in best_result:
+            structure_info[k]=v
 
-        structure_info.update(best_result)
         structure_info[structure_info.index != 'structure'].to_csv(path.joinpath(f"/pbe/cohp/result.csv"))
 
         return structure_info
@@ -1385,23 +1406,27 @@ class VaspTool:
         self.structure = job.final_structure
         return structure_info
 
-
-
-
-    def add_column(self, dataframe: pd.DataFrame, calculate,function:FUNCTION_TYPE):
-        columns = ["calculate"]
-
-        columns.extend(calculate)
-        if columns:
-            for col in columns:
-                if columns.index(col)!=0:
-                    name=col+"_"+function
-                else:
-                    name=col
-                if name not in dataframe.columns:
-                    dataframe.loc[:, name] = 0
-
-
+    def test(self, structure_info, path ):
+        """
+        k点测试demo
+        通过传入KPOINTS给Job 自定义k点文件
+        传入全大写的字段会默认给incar  比如SIGMA=5
+        :param structure_info:
+        :param path:
+        :return:
+        """
+        self.structure :Structure= structure_info["structure"]
+        result = []
+        kps = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        for i in kps:
+            job = StructureRelaxationJob(structure=self.structure, path=path,
+                                         job_type="band_structure",function= "pbe",test=i,KPOINTS=Kpoints.gamma_automatic((i,i,i)),SIGMA=5,
+                                         **self.job_args).run()
+        final_energy = Outcar(job.run_dir.joinpath( "OUTCAR")).final_fr_energy
+        result.append(final_energy)
+        plt.plot(kps, result)
+        plt.savefig(job.run_dir.joinpath( "test_kpoints.png"), dpi=self.dpi)
+        return structure_info
 
     def count_main(self, file_path:Path, calculate_type="band"):
 
@@ -1411,25 +1436,15 @@ class VaspTool:
             logging.error("计算为空，请检查输入文件")
             return
         structure_dataframe: pd.DataFrame
+        callback_function={
+            "band":self.count_band_structure,
+            "optic": self.count_optic,
+            "dielectric": self.count_dielectric,
+            "sr": self.cb_sr,
+            "cohp": self.count_cohp,
+            "test": self.test,
 
-        for f in self.functions:
-            if calculate_type=="band":
-
-
-                self.add_column(structure_dataframe,SCFJob.result_label ,f)
-                self.add_column(structure_dataframe,DosJob.result_label ,f)
-                self.add_column(structure_dataframe,BandStructureJob.result_label ,f)
-
-            elif calculate_type=="optic":
-                self.add_column(structure_dataframe,SCFJob.result_label ,f)
-                self.add_column(structure_dataframe,OpticJob.result_label ,f)
-            elif calculate_type=="dielectric":
-                self.add_column(structure_dataframe,SCFJob.result_label ,f)
-
-                self.add_column(structure_dataframe,StaticDielectricJob.result_label ,f)
-
-            elif calculate_type=="cohp":
-                self.add_column(structure_dataframe,LobsterJob.result_label,f)
+        }
 
         for index, struct_info in structure_dataframe.iterrows():
             try:
@@ -1437,17 +1452,9 @@ class VaspTool:
                     continue
                 path=Path(f"./cache/{struct_info['system']}")
 
-                if calculate_type == "band":
-                    struct_info = self.count_band_structure(struct_info, path)
-                elif calculate_type == "optic":
-                    struct_info = self.count_optic(struct_info, path)
-                elif calculate_type=="dielectric":
-                    struct_info = self.count_dielectric(struct_info, path)
+                if calculate_type in callback_function.keys():
 
-                elif calculate_type=="sr":
-                    self.cb_sr(struct_info,path)
-                elif calculate_type=="cohp":
-                    struct_info = self.count_cohp(struct_info, path)
+                    struct_info = callback_function[calculate_type](struct_info, path)
 
 
 
@@ -1463,6 +1470,12 @@ class VaspTool:
             store_dataframe_as_json(struct_info.to_frame(), f"./cache/{struct_info['system']}/result.json",pbar=False)
             struct_info[struct_info.index != 'structure'].to_csv(f"./cache/{struct_info['system']}/result.csv")
             struct_info["calculate"] = True
+
+
+            for i in struct_info.index:
+                if i not  in structure_dataframe.columns:
+                    structure_dataframe.loc[:, i] = 0
+
             structure_dataframe.loc[index] = struct_info
             if file_path.suffix==".json":
 
@@ -1474,68 +1487,79 @@ class VaspTool:
             # break
         logging.info("全部计算完成")
 
+def build_argparse():
 
-
-
-if __name__ == '__main__':
-    setting=config.get("SETTING",{})
-    parser = argparse.ArgumentParser(description="""Vasp计算脚本.
-                                                 如果只计算pbe的带隙：python VaspTool.py band POSCAR
-                                                 如果计算hse能带：python VaspTool.py band POSCAR --function pbe hse
-                                                 计算杂化泛函以pbe为基础，所以hse前要加上pbe，泛函是按顺序执行的""")
+    parser = argparse.ArgumentParser(description="""Vasp计算脚本. 
+    如果只计算pbe的带隙：python VaspTool.py band POSCAR
+    如果计算hse能带：python VaspTool.py band POSCAR --function pbe hse
+    计算杂化泛函以pbe为基础，所以hse前要加上pbe，泛函是按顺序执行的.""", formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument(
-        "calculate_type",type=str,help="要计算的类型，可以自己封装下，目前有band、optic"
+        "calculate_type",choices=calculate_type,help=f"要计算的类型，可以自己封装下，目前有:{'、'.join(calculate_type)}"
     )
     parser.add_argument(
         "path",type=Path,help="要计算的POSCAR路径，或者要批量计算的文件夹。"
     )
 
+
     parser.add_argument(
+        "-v","--version",action="version",version=__version__
+    )
+
+    group_vasp = parser.add_argument_group('计算细节', '设置K点类型、泛函等。')
+
+    group_vasp.add_argument(
         "-k","--kpoints_type",type=str,help="KPOINTS取点方式：Gamma、Monkhorst。可以只写首字母",default=setting.get("kpoints_type","G")
     )
 
-    parser.add_argument(
+    group_vasp.add_argument(
         "--function",type=str,help="要使用的泛函方法比如pbe、hse",default=["pbe"],nargs="*"
     )
-    parser.add_argument(
-        "-n","-c","--core",type=int,help="要计算使用的核数，默认为计算机最大核数。。",default=os.cpu_count()
+
+    group_vasp.add_argument(
+        "-u",action='store_true' ,help="是否加U",default=False
     )
-    parser.add_argument(
-        "-u",action='store_true' ,help="是否加u",default=False
-    )
-    parser.add_argument(
+    group_vasp.add_argument(
         "-soc","--open_soc",action='store_true' ,help="是否打开soc",default=False
     )
-    parser.add_argument(
-        "-f","--force_coverage",action='store_true',help="是否强制覆盖运行",default=False
-    )
-    parser.add_argument(
+
+    group_vasp.add_argument(
          "--disable_sr",action='store_true',help="是否禁止优化",default=False
     )
 
-
-
-    parser.add_argument(
+    group_run = parser.add_argument_group('任务相关', '设置计算核数、vasp、mpirun环境等。')
+    group_run.add_argument(
+        "-f","--force_coverage",action='store_true',help="是否强制覆盖运行",default=False
+    )
+    group_run.add_argument(
+        "-n","-c","--core",type=int,help="要计算使用的核数，默认为计算机最大核数。。",default=os.cpu_count()
+    )
+    group_run.add_argument(
         "--vasp_path",type=Path,help="vasp_std计算路径，如果设置环境变量，可以不传这个参数",default=setting.get("vasp_path","G")
     )
-    parser.add_argument(
+    group_run.add_argument(
         "--mpirun_path",type=Path,help="mpirun 路径，如果设置环境变量，可以不传这个参数",default=setting.get("mpirun_path","G")
     )
-    parser.add_argument(
+    group_plot = parser.add_argument_group('画图', '画图细节设置。')
+
+    group_plot.add_argument(
         "--energy_min" ,type=int,help="画能带图的时候y轴的下限",default=setting.get("energy_min","G")
 
     )
-    parser.add_argument(
+    group_plot.add_argument(
         "--energy_max", type=int, help="画能带图的时候y轴的上限", default=setting.get("energy_max","G")
 
     )
-    parser.add_argument(
+    group_plot.add_argument(
         "--dpi", type=int, help="保存图的清晰度", default=setting.get("dpi","G")
 
     )
+
+    return parser
+if __name__ == '__main__':
+    setting=config.get("SETTING",{})
+    calculate_type=["band","optic","cohp","dielectric"]
+    parser=build_argparse()
     args=parser.parse_args( )
-
-
 
     vasp = VaspTool(vasp_path=args.vasp_path,
                     mpirun_path=args.mpirun_path,
