@@ -7,7 +7,10 @@ SETTING:
   energy_min : -5 #画图的范围
   energy_max : 2 #画图的范围
   dpi : 300 #图片的dpi
-#磁矩 如果体系里 出现了一下的元素 就设置磁矩 打开自旋
+  UseInputFileName: False
+  #UseInputFileName 如果为 True 在cache下新建文件夹将直接以输入文件名为名字，比如perovskite.cif   计算路径为perovskite
+  #UseInputFileName  如果为 False 则是根据体系的化学式命名  比如perovskite.cif   计算路径为 Cs1Pb1Cl3
+#磁矩 如果体系里 出现了一 下的元素 就设置磁矩 打开自旋
 MAGMOM:
     Ce: 5
     Ce3+: 1
@@ -144,7 +147,16 @@ KPOINTS:
   cohp :
     scf:
       default : 800
-
+  aimd:
+    sr:
+      default: 1000
+    aimd :
+      default: [1,1,1]
+  single_point_energy:
+    sr:
+      default: 1000
+    scf:
+      default: 1000
 
 POTCAR:
   PBE54:

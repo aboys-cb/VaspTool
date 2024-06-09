@@ -145,6 +145,48 @@ def check_in_out_file(path):
     in_out_file = ["INCAR", "POSCAR", "KPOINTS", "POTCAR", "OUTCAR"]
     return all([os.path.exists(os.path.join(path, i)) for i in in_out_file])
 
+
+def convert_xyz_to_structure(xyz_str):
+    lines = xyz_str.split("\n")
+    atom_num = int(lines.pop(0))
+    comment = lines.pop(0)
+    matrix = re.findall("Lattice=\"(.*?)\"", comment)
+    if matrix:
+        matrix = [float(i) for i in matrix[0].split(" ")]
+    species = []
+    coords = []
+    for line in lines:
+        if not line.strip():
+            continue
+        elem, *coord = [i.strip() for i in line.split(" ") if i.strip()]
+        species.append(elem)
+        coords.append([float(coord[0]), float(coord[1]), float(coord[2])])
+
+    assert atom_num == len(species), "解析出来的数量不等于设置的原子数"
+    return Structure(
+        lattice=Lattice(matrix=matrix),
+        species=species,
+        coords=coords,
+        coords_are_cartesian=True
+
+    )
+def read_xyz(path):
+    with open(path,"r",encoding="utf8") as f:
+        contents = f.read()
+        if contents[-1] != "\n":
+            contents += "\n"
+        white_space = r"[ \t\r\f\v]"
+        n_atoms_line = white_space + r"*\d+" + white_space + r"*\n"
+        comment_line = r"[^\n]*\n"
+        coord_lines = r"(\s*\w+\s+[0-9\-\+\.*^eEdD]+\s+[0-9\-\+\.*^eEdD]+\s+[0-9\-\+\.*^eEdD]+.*\n)+"
+        frame_pattern_text = n_atoms_line + comment_line + coord_lines
+        pat = re.compile(frame_pattern_text, re.MULTILINE)
+        mols = []
+        for xyz_match in pat.finditer(contents):
+            xyz_text = xyz_match.group(0)
+            yield xyz_text
+
+
 def read_dataframe_from_file(file_path:Path, **kwargs) -> pd.DataFrame:
     """
     从指定路径读取结构 可以是文件夹路径、结构路径
@@ -157,15 +199,12 @@ def read_dataframe_from_file(file_path:Path, **kwargs) -> pd.DataFrame:
         for p in  file_path.iterdir():
 
             try:
-
-
-                struct = Structure.from_file(p)
-                systems.append({"system": struct.composition.formula.replace(" ",""),
-                                "structure": struct})
+                s=read_dataframe_from_file(p)
+                systems.append(s)
             except:
-
+                logging.warning(f"读取结构文件{p}失败。")
                 pass
-        df = pd.DataFrame(systems)
+        df = pd.concat(systems)
 
     else:
 
@@ -173,13 +212,34 @@ def read_dataframe_from_file(file_path:Path, **kwargs) -> pd.DataFrame:
             df =load_dataframe_from_json(file_path, **kwargs)
         elif file_path.name.endswith("POSCAR") or file_path.suffix in [".cif",".vasp"]:
             struct = Structure.from_file(file_path)
-            df = pd.DataFrame([{"system": struct.composition.formula.replace(" ",""),
-                                                 "structure": struct}])
 
+            if setting.get("UseInputFileName",False):
+                system=file_path.stem
+            else:
+                system = struct.composition.formula.replace(" ", "")
+            df = pd.DataFrame([{"system": system,
+                                                 "structure": struct}])
+        elif file_path.name.endswith("xyz"):
+            systems = []
+
+            for xyz_str in read_xyz(file_path):
+                struct = convert_xyz_to_structure(xyz_str)
+                #xyz 分子式一样 所以加个数字标识下
+                systems.append({"system": struct.composition.formula.replace(" ","") ,
+                                "structure": struct})
+            df = pd.DataFrame(systems)
 
         else:
-            raise ValueError(f"仅支持后缀为POSCAR、cif、vasp、json类型的文件")
-    logging.info(f"一共读取到{df.shape[0]}个文件")
+            raise ValueError(f"仅支持后缀为POSCAR、cif、vasp、json、xyz类型的文件")
+    duplicated = df[df.duplicated("system", False)]
+
+    group = duplicated.groupby("system")
+    df["group_number"] = group.cumcount()
+    df["group_number"].fillna(-1, inplace=True)
+    df["group_number"] = df["group_number"].astype(int)
+    df['system'] = df.apply(
+        lambda row: f"{row['system']}-{row['group_number'] + 1}" if row['group_number'] >= 0 else row['system'], axis=1)
+    df.drop("group_number", inplace=True, axis=1)
     return df
 class BaseIncar(Incar):
     PBE_EDIFF=1e-06
@@ -320,6 +380,12 @@ class BaseIncar(Incar):
                 "ISTART": 1,"SIGMA": 0.05 , "LEPSILON": True, "LPEAD": True, "IBRION": 8,"LWAVE":False,"LCHARG":False
             })
             base.pop("NPAR")
+        elif system=="aimd":
+            base.update({
+                 "ALGO":"Very Fast","IBRION": 0,"MDALGO":2,"ISYM":0,
+                "POTIM":1,"NSW":100,"TEBEG":300,"TEEND":300,
+                "SMASS":1,"LREAL":"Auto"
+            })
 
         base.update(kwargs)
 
@@ -988,10 +1054,45 @@ class BandStructureJob(JobBase):
         return result
 
 
+class AimdJob(JobBase):
 
+
+    def __init__(self,  **kwargs):
+        super().__init__( step_type="aimd", **kwargs)
+
+
+    # @property
+    # def incar(self):
+    #     incar=super().incar
+
+    #
+    #     return incar
+
+
+
+    def run(self,**kwargs):
+        if self.check_cover():
+            return self
+
+
+        return super().run(**kwargs)
+
+    def post_processing(self, result=None):
+        if result is None:
+            result = {}
+        """
+        
+        :return:
+        """
+        # vasprun = Vasprun(self.run_dir.joinpath(f"vasprun.xml"), parse_potcar_file=False, parse_dos=False)
+        # result[f"efermi_{self.function}"]=vasprun.efermi
+        # result[f"energy_{self.function}"]=vasprun.final_energy
+
+
+        return result
 
 class  StaticDielectricJob(JobBase):
-    result_label = ["dielectric_electron", "dielectric_ionic"]
+
     def __init__(self,  **kwargs):
         super().__init__(job_type="optic_dielectric",step_type= "dielectric", **kwargs)
 
@@ -1400,7 +1501,45 @@ class VaspTool:
 
         return structure_info
 
+    def count_aimd(self, structure_info, path:Path="./"):
 
+        self.structure: Structure = structure_info["structure"]
+        if not self.disable_relaxation:
+
+            job = StructureRelaxationJob(structure=self.structure, path=path,
+                                         job_type="aimd", function="pbe",
+                                         **self.job_args).run()
+
+            self.structure = job.final_structure
+
+        aimd_job=AimdJob(
+            structure=self.structure, path=path,
+            job_type="aimd", function="pbe",
+            **self.job_args
+        )
+        aimd_job.run()
+        aimd_job.post_processing(
+
+        )
+        return structure_info
+
+    def count_scf(self, structure_info, path:Path="./"):
+        self.structure :Structure= structure_info["structure"]
+
+        for function in self.functions:
+            # # # 进行scf自洽计算
+
+            if not self.disable_relaxation:
+                job=StructureRelaxationJob(structure=self.structure, path=path,
+                                           job_type="single_point_energy",   function=function,
+                                           **self.job_args).run( )
+
+            scf_job = SCFJob(structure=self.structure, path=path,
+                             job_type="single_point_energy", function=function,
+                             **self.job_args).run()
+
+            scf_job.post_processing(structure_info)
+        return structure_info
     def cb_sr(self, structure_info, path ):
         self.structure :Structure= structure_info["structure"]
         job = StructureRelaxationJob(structure=self.structure, path=path,
@@ -1439,6 +1578,8 @@ class VaspTool:
         if structure_dataframe.empty:
             logging.error("计算为空，请检查输入文件")
             return
+        logging.info(f"一共读取到{structure_dataframe.shape[0]}个文件")
+
         structure_dataframe: pd.DataFrame
         callback_function={
             "band":self.count_band_structure,
@@ -1447,6 +1588,8 @@ class VaspTool:
             "sr": self.cb_sr,
             "cohp": self.count_cohp,
             "test": self.test,
+            "aimd":self.count_aimd,
+            "scf": self.count_scf
 
         }
 
@@ -1561,9 +1704,9 @@ def build_argparse():
     return parser
 if __name__ == '__main__':
     setting=config.get("SETTING",{})
-    calculate_type=["band","optic","cohp","dielectric"]
+    calculate_type=["band","optic","cohp","dielectric","aimd","scf"]
     parser=build_argparse()
-    args=parser.parse_args( )
+    args=parser.parse_args()
 
     vasp = VaspTool(vasp_path=args.vasp_path,
                     mpirun_path=args.mpirun_path,
