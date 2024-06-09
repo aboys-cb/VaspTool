@@ -6,7 +6,7 @@
 import os
 from monty.serialization import loadfn
 
-__version__="1.0.0"
+__version__="1.0.1"
 os.environ["PMG_DEFAULT_FUNCTIONAL"] = r"PBE_54"
 
 config = loadfn("./config.yaml")
@@ -224,7 +224,7 @@ class BaseIncar(Incar):
 
         elif function=="mbj":
             base.update({"METAGGA": "MBJ",   "LASPH": True,
-                         "LMAXMIX": 4, "GGA":"CA" ,"NELM":300 })
+                           "GGA":"CA" ,"NELM":300 })
 
 
         elif function=="diag":
@@ -449,7 +449,7 @@ class BaseKpoints:
 
             # for line mode only, add the symmetry lines w/zero weight
 
-            kpath = HighSymmKpath(structure)
+            kpath = HighSymmKpath(structure, path_type="hinuma")
             frac_k_points, labels = kpath.get_kpoints(
                 line_density=self.get_kpoint_setting("band_structure","band",function), coords_are_cartesian=False
             )
@@ -543,12 +543,14 @@ class JobBase():
             LDAUL = []
             LDAUU = []
             LDAUJ = []
-
+            LDAUL_max=1
             for elem in self.structure.composition.elements:
                 if elem.name in data_u.keys():
                     LDAUL.append(str(data_u[elem.name]["LDAUL"]))
                     LDAUU.append(str(data_u[elem.name]["LDAUU"]))
                     LDAUJ.append(str(data_u[elem.name]["LDAUJ"]))
+                    if LDAUL_max<data_u[elem.name]["LDAUL"]:
+                        LDAUL_max=data_u[elem.name]["LDAUL"]
                 else:
 
                     LDAUL.append("-1")
@@ -561,7 +563,7 @@ class JobBase():
                 return incar
             incar["LDAU"] = True
             incar["LDAUTYPE"] = 2
-            incar["LMAXMIX"] = 4
+            incar["LMAXMIX"] = LDAUL_max*2
             incar["LDAUL"] = " ".join(LDAUL)
             incar["LDAUU"] = " ".join(LDAUU)
             incar["LDAUJ"] = " ".join(LDAUJ)
@@ -996,6 +998,8 @@ class  StaticDielectricJob(JobBase):
     def run(self,**kwargs ):
         if self.check_cover():
             return self
+
+
         cp_file(self.path.joinpath(f"{self.function}/scf/WAVECAR"), self.run_dir)
         return super().run( **kwargs )
 

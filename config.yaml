@@ -78,7 +78,7 @@ U:
 
 INCAR :
   SYSTEM : BaseIncar
-  EDIFF : 1e-08 #HSE会自动将成-4 加快计算 如果需要修改 程序162行左右HSE_EDIFF
+  EDIFF : 1e-06 #HSE会自动将成-4 加快计算 如果需要修改 程序162行左右HSE_EDIFF
   EDIFFG: -0.01
   ISPIN : 1 #其实这里设置无所谓 会根据磁性原子列表自动判断
   ISMEAR : 0
@@ -99,7 +99,7 @@ KPOINTS:
       default : 3000
     scf:
       default : 3000
-      pbe : 6000
+      pbe : 3000
       hse : 3000
       scan : 3000
       r2scan : 3000
@@ -108,14 +108,14 @@ KPOINTS:
     band:
       default: 10
       pbe: 20
-      hse: 10
-      scan: 10
+      hse: 10 #杂化泛函的10 只有再没有pbe的情况下才生效
+      scan: 10 #不然会取pbe的vasp生成的点自动拼接  更准确一些
       r2scan: 10
       mbj: 10
       gw: 3000
     dos:
       default: 3000
-      pbe: 6000
+      pbe: 3000
       hse: 3000
       scan: 3000
       r2scan: 3000
@@ -126,13 +126,13 @@ KPOINTS:
     scf:
       default : 3000
 
-      pbe : 2000
+      pbe : 1000
       pbesol : 6000
       hse : 6000
     dielectric:
       default : 3000
 
-      pbe: 2000
+      pbe: 1000
       pbesol: 3000
       hse: 3000
     optic:

@@ -116,7 +116,7 @@ class MyDosPlotter(DosPlotter):
         # Remove duplicate labels with a dictionary
         handles, labels = ax.get_legend_handles_labels()
         label_dict = dict(zip(labels, handles))
-        ax.legend(label_dict.values(), label_dict, frameon=False,  ncols=2,  columnspacing=1 )
+        ax.legend(label_dict.values(), label_dict, frameon=False,  ncol=2,  columnspacing=1 )
 
 
     def plot_all(self, dos_conf, invert_axes=True, energy_lim=None, density_lim=None):
@@ -184,9 +184,11 @@ class MyDosPlotter(DosPlotter):
 if __name__ == '__main__':
     plotter = MyDosPlotter()
     dos_conf = [
+
         {"path": "../cache/Cs1Ag0.5Bi0.5I3/vasprun.xml",
          "projected": {"I": ["p"],"Ag": [ "d"],"Bi": ["p" ]   },
          },
+
         {"path": "../cache/Cs1Ag0.5Bi0.5I3/vasprun.xml",
          "projected":{"I": ["p"],"Ag": [ "d"],"Bi": ["p" ]  },
          },
