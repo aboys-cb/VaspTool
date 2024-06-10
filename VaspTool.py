@@ -7,7 +7,7 @@ import os
 
 from monty.serialization import loadfn
 
-__version__="1.0.1"
+__version__ = "1.0.2"
 
 os.environ["PMG_DEFAULT_FUNCTIONAL"] = r"PBE_54"
 
