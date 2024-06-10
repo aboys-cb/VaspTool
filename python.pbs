@@ -1,0 +1,19 @@
+#!/bin/bash
+#PBS -N sci
+#PBS -l nodes=node01:ppn=64
+cd $PBS_O_WORKDIR
+NPROCS=`wc -l < $PBS_NODEFILE`
+
+__conda_setup="$('/opt/anaconda3/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
+if [ $? -eq 0 ]; then
+    eval "$__conda_setup"
+else
+    if [ -f "/opt/anaconda3/etc/profile.d/conda.sh" ]; then
+        . "/opt/anaconda3/etc/profile.d/conda.sh"
+    else
+        export PATH="/opt/anaconda3/bin:$PATH"
+    fi
+fi
+unset __conda_setup
+conda activate mysci
+python -u  VaspTool.py band  structures --core 64   --disable_sr  --vasp_path=/opt/software/vasp/vasp.6.3.0/bin/vasp_std     > out
