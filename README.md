@@ -78,17 +78,17 @@ python VaspTool.py band Si2.cif --function pbe hse
 ```
 
 ### 分子动力学计算
-
+会在VaspTool.py同级目录保存一个train.xyz的文件，所以输入文件不要叫train.xyz
 - 计算单点能，禁止优化：
 
 ```bash
-python VaspTool.py scf train.xyz --disable_sr
+python VaspTool.py scf train1.xyz --disable_sr
 ```
 
 - 计算单点能（先优化结构，在计算单点能）：
 
 ```bash
-python VaspTool.py scf train.xyz
+python VaspTool.py scf train1.xyz
 ```
 
 - 分子动力学模拟
