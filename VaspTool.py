@@ -4,9 +4,11 @@
 # @Author  : 兵
 # @email    : 1747193328@qq.com
 import os
+
 from monty.serialization import loadfn
 
 __version__="1.0.1"
+
 os.environ["PMG_DEFAULT_FUNCTIONAL"] = r"PBE_54"
 
 config = loadfn("./config.yaml")
@@ -34,17 +36,25 @@ from monty.os import cd
 import datetime
 import os
 import subprocess
-
+from tqdm import tqdm
+from monty.io import zopen
+from monty.json import MontyEncoder, MontyDecoder
 from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 from pymatgen.io.lobster import Lobsterin,Lobsterout
 from typing import *
-from pymatgen.core import Structure, Composition, Element, Lattice
+from pymatgen.core import Structure
 from pymatgen.io.vasp.inputs import Incar, Poscar, Kpoints, VaspInput, Potcar, PotcarSingle
-from pymatgen.io.vasp.outputs import Vasprun, BSVasprun, Chgcar, Dos, Outcar, Oszicar, Eigenval, Wavecar
+from pymatgen.io.vasp.outputs import Vasprun, BSVasprun, Outcar, Eigenval, Wavecar
 from pymatgen.electronic_structure.plotter import BSPlotter, DosPlotter, BSDOSPlotter
 from pymatgen.symmetry.bandstructure import HighSymmKpath
 from pymatgen.analysis.solar import slme
-from matminer.utils.io import load_dataframe_from_json, store_dataframe_as_json
+from pymatgen.io.ase import AseAtomsAdaptor
+
+try:
+    from ase.io import read, write
+except:
+    write = None
+    read = None
 import matplotlib
 
 matplotlib.use('Agg')
@@ -146,45 +156,54 @@ def check_in_out_file(path):
     return all([os.path.exists(os.path.join(path, i)) for i in in_out_file])
 
 
-def convert_xyz_to_structure(xyz_str):
-    lines = xyz_str.split("\n")
-    atom_num = int(lines.pop(0))
-    comment = lines.pop(0)
-    matrix = re.findall("Lattice=\"(.*?)\"", comment)
-    if matrix:
-        matrix = [float(i) for i in matrix[0].split(" ")]
-    species = []
-    coords = []
-    for line in lines:
-        if not line.strip():
-            continue
-        elem, *coord = [i.strip() for i in line.split(" ") if i.strip()]
-        species.append(elem)
-        coords.append([float(coord[0]), float(coord[1]), float(coord[2])])
+# 将xyz 获取的
+def write_to_xyz(vaspxml_path, save_path):
+    if setting.get("ExportXYZ"):
 
-    assert atom_num == len(species), "解析出来的数量不等于设置的原子数"
-    return Structure(
-        lattice=Lattice(matrix=matrix),
-        species=species,
-        coords=coords,
-        coords_are_cartesian=True
+        if write is None:
+            logging.error("设置开启了导出xyz文件，但没有安装ase，请 pip install ase")
+        else:
+            atoms_list = []
+            atoms = read(vaspxml_path, index=":")
+            for atom in atoms:
+                xx, yy, zz, yz, xz, xy = -atom.calc.results['stress'] * atom.get_volume()  # *160.21766
+                atom.info['virial'] = np.array([(xx, xy, xz), (xy, yy, yz), (xz, yz, zz)])
 
-    )
-def read_xyz(path):
-    with open(path,"r",encoding="utf8") as f:
-        contents = f.read()
-        if contents[-1] != "\n":
-            contents += "\n"
-        white_space = r"[ \t\r\f\v]"
-        n_atoms_line = white_space + r"*\d+" + white_space + r"*\n"
-        comment_line = r"[^\n]*\n"
-        coord_lines = r"(\s*\w+\s+[0-9\-\+\.*^eEdD]+\s+[0-9\-\+\.*^eEdD]+\s+[0-9\-\+\.*^eEdD]+.*\n)+"
-        frame_pattern_text = n_atoms_line + comment_line + coord_lines
-        pat = re.compile(frame_pattern_text, re.MULTILINE)
-        mols = []
-        for xyz_match in pat.finditer(contents):
-            xyz_text = xyz_match.group(0)
-            yield xyz_text
+                atom.calc.results['energy'] = atom.calc.results['free_energy']
+
+                atom.info['Config_type'] = "OUTCAR"
+                atom.info['Weight'] = 1.0
+                del atom.calc.results['stress']
+                del atom.calc.results['free_energy']
+                atoms_list.append(atom)
+
+            write(save_path, atoms_list, format='extxyz', append=True)
+
+
+def store_dataframe_as_json(dataframe, filename, orient="split"):
+    with zopen(filename, "w") as f:
+        data = json.dumps(dataframe.to_dict(orient=orient), cls=MontyEncoder)
+        f.write(data)
+
+
+def load_dataframe_from_json(filename, pbar=True, decode=True):
+    # Progress bar for reading file with hook
+    pbar1 = tqdm(desc=f"Reading file {filename}", position=0, leave=True, ascii=True, disable=not pbar)
+    # Progress bar for decoding objects
+    pbar2 = tqdm(desc=f"Decoding objects from {filename}", position=0, leave=True, ascii=True, disable=not pbar)
+
+    with zopen(filename, "rb") as f:
+        dataframe_data = json.load(f, cls=MontyDecoder)
+
+    pbar1.close()
+    pbar2.close()
+
+    if isinstance(dataframe_data, dict):
+        if set(dataframe_data.keys()) == {"data", "columns", "index"}:
+            return pd.DataFrame(**dataframe_data)
+    else:
+        return pd.DataFrame(dataframe_data)
+
 
 
 def read_dataframe_from_file(file_path:Path, **kwargs) -> pd.DataFrame:
@@ -221,9 +240,12 @@ def read_dataframe_from_file(file_path:Path, **kwargs) -> pd.DataFrame:
                                                  "structure": struct}])
         elif file_path.name.endswith("xyz"):
             systems = []
-
-            for xyz_str in read_xyz(file_path):
-                struct = convert_xyz_to_structure(xyz_str)
+            if read is None:
+                logging.error("xyz文件必须安装ase,请 pip install ase 安装！")
+                return pd.DataFrame()
+            atoms = read(file_path, index=":", format="extxyz")
+            for atom in atoms:
+                struct = AseAtomsAdaptor.get_structure(atom)
                 #xyz 分子式一样 所以加个数字标识下
                 systems.append({"system": struct.composition.formula.replace(" ","") ,
                                 "structure": struct})
@@ -383,8 +405,8 @@ class BaseIncar(Incar):
         elif system=="aimd":
             base.update({
                  "ALGO":"Very Fast","IBRION": 0,"MDALGO":2,"ISYM":0,
-                "POTIM":1,"NSW":100,"TEBEG":300,"TEEND":300,
-                "SMASS":1,"LREAL":"Auto"
+                "POTIM": 1, "NSW": 3000, "TEBEG": 300, "TEEND": 300,
+                "SMASS": 1, "LREAL": "Auto", "ISIF":2
             })
 
         base.update(kwargs)
@@ -688,10 +710,11 @@ class JobBase():
         for src in src_files:
             src_file_list = glob.glob(self.run_dir.joinpath(src).as_posix())
             for file in src_file_list:
-
                 Path(file).unlink()
+
         return False
-    def run(self, timeout=None ,lobster=None):
+
+    def run(self, timeout=None, lobster=None, remove_wavecar=False):
         if self.open_soc  :
             # 如果打开了soc 并且 scf  或band in
             vasp_path =  self.vasp_path.with_name("vasp_ncl")
@@ -715,8 +738,8 @@ class JobBase():
         with cd(self.run_dir), open("vasp.out", "w") as f_std, open("vasp.err", "w", buffering=1) as f_err:
             subprocess.check_call(vasp_cmd, stdout=f_std, stderr=f_err, timeout=timeout)
         logging.info("\t计算完成"  +f"\t耗时：{datetime.datetime.now() - start}")
-
-
+        if remove_wavecar:
+            self.run_dir.joinpath("WAVECAR").unlink()
 
         return self
     @abc.abstractmethod
@@ -802,7 +825,6 @@ class SCFJob(JobBase):
         if self.function in ["hse", "gw", "r2scan", "scan", "mbj", "diag"]:
             if self.path.joinpath("pbe/scf").exists():
                 cp_file(self.path.joinpath("pbe/scf/WAVECAR"),  self.run_dir)
-
         return super().run(**kwargs)
 
     def post_processing(self, result=None):
@@ -815,7 +837,8 @@ class SCFJob(JobBase):
         vasprun = Vasprun(self.run_dir.joinpath(f"vasprun.xml"), parse_potcar_file=False, parse_dos=False)
         result[f"efermi_{self.function}"]=vasprun.efermi
         result[f"energy_{self.function}"]=vasprun.final_energy
-
+        if self.job_type == "single_point_energy":
+            write_to_xyz(self.run_dir.joinpath("vasprun.xml"), "./train.xyz")
 
         return result
 
@@ -899,8 +922,6 @@ class DosJob(JobBase):
             result = {}
 
         vasprun = Vasprun(self.run_dir.joinpath("vasprun.xml"), parse_potcar_file=False)
-
-
         dos = vasprun.complete_dos
         result[f"dos_efermi_{self.function}"] = dos.efermi
         result[f"dos_vbm_{self.function}"] = dos.get_cbm_vbm()[1]
@@ -1087,8 +1108,7 @@ class AimdJob(JobBase):
         # vasprun = Vasprun(self.run_dir.joinpath(f"vasprun.xml"), parse_potcar_file=False, parse_dos=False)
         # result[f"efermi_{self.function}"]=vasprun.efermi
         # result[f"energy_{self.function}"]=vasprun.final_energy
-
-
+        write_to_xyz(self.run_dir.joinpath("vasprun.xml"), self.run_dir.joinpath("train.xyz"))
         return result
 
 class  StaticDielectricJob(JobBase):
@@ -1330,7 +1350,7 @@ class VaspTool:
 
         cp_file(band_job.run_dir.joinpath("WAVE*"),optic_job.run_dir)
         cp_file(band_job.run_dir.joinpath("*.tmp"),optic_job.run_dir)
-        optic_job.run()
+        optic_job.run(remove_wavecar=True)
         optic_job.post_processing(structure_info)
 
 
@@ -1358,7 +1378,7 @@ class VaspTool:
 
 
             optic_job = OpticJob(structure=self.structure, path=path,
-                                 function=function, **self.job_args).run()
+                                 function=function, **self.job_args).run(remove_wavecar=True)
 
             optic_job.post_processing(structure_info)
 
@@ -1390,7 +1410,7 @@ class VaspTool:
 
             # #进行介电常数的
             dielectric_job = StaticDielectricJob(structure=self.structure, path=path,
-                              function=function, **self.job_args).run()
+                                                 function=function, **self.job_args).run(remove_wavecar=True)
 
             dielectric_job.post_processing(structure_info)
 
@@ -1407,8 +1427,7 @@ class VaspTool:
 
         band_job = BandStructureJob(structure=self.structure, path=path, function="gw", **self.job_args)
 
-
-        band_job.run()
+        band_job.run(remove_wavecar=True)
         result = band_job.post_processing()
 
     def count_band_structure(self, structure_info , path:Path="./") ->pd.Series:
@@ -1437,11 +1456,11 @@ class VaspTool:
 
 
             dos_job = DosJob(structure=self.structure, path=path,
-                             function=function, **self.job_args).run()
+                             function=function, **self.job_args).run(remove_wavecar=True)
 
             dos_job.post_processing(structure_info)
             band_job = BandStructureJob(structure=self.structure, path=path,
-                             function=function, **self.job_args).run()
+                                        function=function, **self.job_args).run(remove_wavecar=True)
 
             band_job.post_processing(structure_info)
             self.plot_bs_dos(band_job.run_dir.joinpath(f"vasprun.xml"),dos_job.run_dir.joinpath(f"vasprun.xml"),path.joinpath(f"{function}/band_structure_dos_{function}.png"))
@@ -1517,7 +1536,7 @@ class VaspTool:
             job_type="aimd", function="pbe",
             **self.job_args
         )
-        aimd_job.run()
+        aimd_job.run(remove_wavecar=True)
         aimd_job.post_processing(
 
         )
@@ -1536,9 +1555,10 @@ class VaspTool:
 
             scf_job = SCFJob(structure=self.structure, path=path,
                              job_type="single_point_energy", function=function,
-                             **self.job_args).run()
+                             **self.job_args).run(remove_wavecar=True)
 
             scf_job.post_processing(structure_info)
+
         return structure_info
     def cb_sr(self, structure_info, path ):
         self.structure :Structure= structure_info["structure"]
@@ -1614,10 +1634,9 @@ class VaspTool:
                 with open("./err.txt", "a+", encoding="utf8") as f:
                     f.write(struct_info['system'] + "\n")
 
-            store_dataframe_as_json(struct_info.to_frame(), f"./cache/{struct_info['system']}/result.json",pbar=False)
+            store_dataframe_as_json(struct_info.to_frame(), f"./cache/{struct_info['system']}/result.json")
             struct_info[struct_info.index != 'structure'].to_csv(f"./cache/{struct_info['system']}/result.csv")
             struct_info["calculate"] = True
-
 
             for i in struct_info.index:
                 if i not  in structure_dataframe.columns:
@@ -1626,9 +1645,9 @@ class VaspTool:
             structure_dataframe.loc[index] = struct_info
             if file_path.suffix==".json":
 
-                store_dataframe_as_json(structure_dataframe, file_path.name,pbar=False)
+                store_dataframe_as_json(structure_dataframe, file_path.name)
             else:
-                store_dataframe_as_json(structure_dataframe, "./all_result.json",pbar=False)
+                store_dataframe_as_json(structure_dataframe, "./all_result.json")
                 structure_dataframe.loc[:, structure_dataframe.columns != 'structure'].to_csv(f"./result.csv")
 
             # break
