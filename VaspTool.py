@@ -404,8 +404,8 @@ class BaseIncar(Incar):
             base.pop("NPAR")
         elif system=="aimd":
             base.update({
-                 "ALGO":"Very Fast","IBRION": 0,"MDALGO":2,"ISYM":0,
-                "POTIM": 1, "NSW": 3000, "TEBEG": 300, "TEEND": 300,
+                "ALGO": "Fast", "IBRION": 0, "MDALGO": 2, "ISYM": 0,
+                "POTIM": 4, "NSW": 3000, "TEBEG": 300, "TEEND": 300,
                 "SMASS": 1, "LREAL": "Auto", "ISIF":2
             })
 
