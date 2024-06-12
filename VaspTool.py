@@ -157,7 +157,7 @@ def check_in_out_file(path):
 
 
 # 将xyz 获取的
-def write_to_xyz(vaspxml_path, save_path):
+def write_to_xyz(vaspxml_path, save_path, append=True):
     if setting.get("ExportXYZ"):
 
         if write is None:
@@ -177,7 +177,7 @@ def write_to_xyz(vaspxml_path, save_path):
                 del atom.calc.results['free_energy']
                 atoms_list.append(atom)
 
-            write(save_path, atoms_list, format='extxyz', append=True)
+            write(save_path, atoms_list, format='extxyz', append=append)
 
 
 def store_dataframe_as_json(dataframe, filename, orient="split"):
@@ -262,6 +262,7 @@ def read_dataframe_from_file(file_path:Path, **kwargs) -> pd.DataFrame:
     df['system'] = df.apply(
         lambda row: f"{row['system']}-{row['group_number'] + 1}" if row['group_number'] >= 0 else row['system'], axis=1)
     df.drop("group_number", inplace=True, axis=1)
+    df.reset_index(drop=True, inplace=True)
     return df
 class BaseIncar(Incar):
     PBE_EDIFF=1e-06
@@ -404,9 +405,9 @@ class BaseIncar(Incar):
             base.pop("NPAR")
         elif system=="aimd":
             base.update({
-                "ALGO": "Fast", "IBRION": 0, "MDALGO": 2, "ISYM": 0,
-                "POTIM": 4, "NSW": 3000, "TEBEG": 300, "TEEND": 300,
-                "SMASS": 1, "LREAL": "Auto", "ISIF":2
+                "ALGO": "N", "IBRION": 0, "MDALGO": 2, "ISYM": 0,
+                "POTIM": 2, "NSW": 2000, "TEBEG": 300, "TEEND": 300,
+                "SMASS": 1, "LREAL": "Auto", "ISIF": 2, "ADDGRID": True
             })
 
         base.update(kwargs)
@@ -838,7 +839,7 @@ class SCFJob(JobBase):
         result[f"efermi_{self.function}"]=vasprun.efermi
         result[f"energy_{self.function}"]=vasprun.final_energy
         if self.job_type == "single_point_energy":
-            write_to_xyz(self.run_dir.joinpath("vasprun.xml"), "./train.xyz")
+            write_to_xyz(self.run_dir.joinpath("vasprun.xml"), "./train.xyz", append=True)
 
         return result
 
@@ -1108,7 +1109,7 @@ class AimdJob(JobBase):
         # vasprun = Vasprun(self.run_dir.joinpath(f"vasprun.xml"), parse_potcar_file=False, parse_dos=False)
         # result[f"efermi_{self.function}"]=vasprun.efermi
         # result[f"energy_{self.function}"]=vasprun.final_energy
-        write_to_xyz(self.run_dir.joinpath("vasprun.xml"), self.run_dir.joinpath("train.xyz"))
+        write_to_xyz(self.run_dir.joinpath("vasprun.xml"), self.run_dir.joinpath("train.xyz"), append=False)
         return result
 
 class  StaticDielectricJob(JobBase):
