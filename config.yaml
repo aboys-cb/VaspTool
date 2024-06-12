@@ -93,7 +93,7 @@ INCAR :
   ALGO : Normal #在算性质的时候 会更改 比如HSE的时候是Damped
   PREC : Normal
   GGA : PE #pbesol会更改为PS
-  LREAL : False
+  LREAL: Auto
   NPAR : 4 #在无法并行化的程序里 会删除这个参数 但不影响能带等计算
 
 KPOINTS:

@@ -4,12 +4,12 @@
 # @Author  : 兵
 # @email    : 1747193328@qq.com
 import numpy as np
-from matplotlib import pyplot as plt, ticker
+import palettable
+from matplotlib import pyplot as plt
 from pymatgen.electronic_structure.core import OrbitalType, Spin
 from pymatgen.electronic_structure.plotter import DosPlotter
 from pymatgen.io.vasp import Vasprun
 
-import palettable
 plt.style.use("./science.mplstyle")
 
 

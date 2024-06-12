@@ -14,9 +14,6 @@ os.environ["PMG_DEFAULT_FUNCTIONAL"] = r"PBE_54"
 config = loadfn("./config.yaml")
 os.environ["PMG_VASP_PSP_DIR"] =  os.path.expanduser(os.path.expandvars(config["SETTING"]["PMG_VASP_PSP_DIR"]))
 
-
-
-
 import abc
 import argparse
 import glob
@@ -73,6 +70,7 @@ logging.basicConfig(
 PotcarSingle.functional_dir["PBE_54"] = ""
 FUNCTION_TYPE = ["pbe","pbesol", "hse","scan","r2scan","mbj","gw","bse"]
 KPOINTS_TYPE = Union[int, tuple,list]
+setting = config.get("SETTING", {})
 
 potcar_config=config.get("POTCAR",{}).get("PBE54")
 
@@ -1723,7 +1721,6 @@ def build_argparse():
 
     return parser
 if __name__ == '__main__':
-    setting=config.get("SETTING",{})
     calculate_type=["band","optic","cohp","dielectric","aimd","scf"]
     parser=build_argparse()
     args=parser.parse_args()

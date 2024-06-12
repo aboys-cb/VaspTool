@@ -7,7 +7,6 @@
 绘制光吸收曲线的图
 """
 import matplotlib.pyplot as plt
-from matplotlib.ticker import AutoLocator
 from pymatgen.analysis.solar.slme import absorption_coefficient
 from pymatgen.io.vasp.outputs import  Vasprun
 

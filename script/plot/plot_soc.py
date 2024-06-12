@@ -4,10 +4,9 @@
 # @Author  : 兵
 # @email    : 1747193328@qq.com
 import itertools
-import os
-import platform
 import re
 from collections import defaultdict
+
 import numpy as np
 from matplotlib import pyplot as plt
 from monty.io import zopen
@@ -17,7 +16,6 @@ plt.rc('font', family='Times New Roman')
 from matplotlib import rcParams
 
 rcParams['mathtext.default'] = 'regular'
-from matplotlib import cm
 import matplotlib as mpl
 from pymatgen.electronic_structure.core import Spin
 from pymatgen.io.vasp import BSVasprun

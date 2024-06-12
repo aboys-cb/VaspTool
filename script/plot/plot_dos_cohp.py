@@ -9,14 +9,11 @@ from typing import Literal
 import matplotlib.pyplot as plt
 import numpy as np
 import palettable
-from matplotlib import ticker
 from matplotlib.patches import ConnectionPatch
 from numpy._typing import ArrayLike
+from pymatgen.electronic_structure.cohp import Cohp, CompleteCohp
 from pymatgen.electronic_structure.core import Spin, Orbital, OrbitalType
-
-from pymatgen.electronic_structure.cohp import Cohp,CompleteCohp
-from pymatgen.electronic_structure.plotter import CohpPlotter
-from pymatgen.electronic_structure.dos import CompleteDos,Dos
+from pymatgen.electronic_structure.dos import Dos
 from pymatgen.io.vasp import Vasprun
 
 plt.style.use("./science.mplstyle")
