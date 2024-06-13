@@ -7,7 +7,7 @@ import os
 
 from monty.serialization import loadfn
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 os.environ["PMG_DEFAULT_FUNCTIONAL"] = r"PBE_54"
 
@@ -404,7 +404,7 @@ class BaseIncar(Incar):
         elif system=="aimd":
             base.update({
                 "ALGO": "N", "IBRION": 0, "MDALGO": 2, "ISYM": 0,
-                "POTIM": 2, "NSW": 2000, "TEBEG": 300, "TEEND": 300,
+                "POTIM": 1, "NSW": 3000, "TEBEG": 300, "TEEND": 300,
                 "SMASS": 1, "LREAL": "Auto", "ISIF": 2, "ADDGRID": True
             })
 
@@ -1107,7 +1107,7 @@ class AimdJob(JobBase):
         # vasprun = Vasprun(self.run_dir.joinpath(f"vasprun.xml"), parse_potcar_file=False, parse_dos=False)
         # result[f"efermi_{self.function}"]=vasprun.efermi
         # result[f"energy_{self.function}"]=vasprun.final_energy
-        write_to_xyz(self.run_dir.joinpath("vasprun.xml"), self.run_dir.joinpath("train.xyz"), append=False)
+        write_to_xyz(self.run_dir.joinpath("vasprun.xml"), self.run_dir.joinpath("aimd.xyz"), append=False)
         return result
 
 class  StaticDielectricJob(JobBase):

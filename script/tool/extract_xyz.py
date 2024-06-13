@@ -6,9 +6,11 @@
 """
 等间距抽取多少个结构在xyz文件中
 """
+import sys
+
 from ase.io import read, write
 
-file_path = "./train.xyz"
+file_path = sys.argv[1]
 atoms = read(file_path, index=":", format="extxyz")
 
 extract = atoms[::40]
