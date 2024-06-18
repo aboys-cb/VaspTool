@@ -255,7 +255,7 @@ def read_dataframe_from_file(file_path:Path, **kwargs) -> pd.DataFrame:
 
     group = duplicated.groupby("system")
     df["group_number"] = group.cumcount()
-    df["group_number"].fillna(-1, inplace=True)
+    df["group_number"] = df["group_number"].fillna(-1)
     df["group_number"] = df["group_number"].astype(int)
     df['system'] = df.apply(
         lambda row: f"{row['system']}-{row['group_number'] + 1}" if row['group_number'] >= 0 else row['system'], axis=1)
@@ -1661,9 +1661,10 @@ class VaspTool:
 
             for i in struct_info.index:
                 if i not  in structure_dataframe.columns:
-                    structure_dataframe.loc[:, i] = 0
+                    structure_dataframe.loc[:, i] = pd.NA
 
             structure_dataframe.loc[index] = struct_info
+
             if file_path.suffix==".json":
 
                 store_dataframe_as_json(structure_dataframe, file_path.name)
