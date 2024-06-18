@@ -16,8 +16,8 @@ from ase.io import write
 path = sys.argv[1]
 num = int(sys.argv[2])
 perturbed_system = dpdata.System(path).perturb(pert_num=num,
-                                               cell_pert_fraction=0.03,
-                                               atom_pert_distance=0.2,
+                                               cell_pert_fraction=0.1,
+                                               atom_pert_distance=0.5,
                                                atom_pert_style='normal')
 
 structures = perturbed_system.to('ase/structure')

@@ -11,9 +11,14 @@ import sys
 from ase.io import read, write
 
 file_path = sys.argv[1]
-atoms = read(file_path, index=":", format="extxyz")
 
-extract = atoms[::40]
+atoms = read(file_path, index=":", format="extxyz")
+if len(sys.argv) == 3:
+    num = int(sys.argv[2])
+else:
+    num = 50
+
+extract = atoms[::num]
 print(len(extract))
 # 这里将抽取的追加写入到微扰的里面
 write("./scf.xyz", extract, format='extxyz', append=True)
