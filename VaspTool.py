@@ -7,7 +7,7 @@ import os
 
 from monty.serialization import loadfn
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 os.environ["PMG_DEFAULT_FUNCTIONAL"] = r"PBE_54"
 
@@ -233,7 +233,7 @@ def read_dataframe_from_file(file_path:Path, **kwargs) -> pd.DataFrame:
             if setting.get("UseInputFileName",False):
                 system=file_path.stem
             else:
-                system = struct.composition.formula.replace(" ", "")
+                system = struct.composition.to_pretty_string()
             df = pd.DataFrame([{"system": system,
                                                  "structure": struct}])
         elif file_path.name.endswith("xyz"):
@@ -245,7 +245,7 @@ def read_dataframe_from_file(file_path:Path, **kwargs) -> pd.DataFrame:
             for atom in atoms:
                 struct = AseAtomsAdaptor.get_structure(atom)
                 #xyz 分子式一样 所以加个数字标识下
-                systems.append({"system": struct.composition.formula.replace(" ","") ,
+                systems.append({"system": struct.composition.to_pretty_string(),
                                 "structure": struct})
             df = pd.DataFrame(systems)
 
@@ -615,7 +615,7 @@ class JobBase():
 
 
         incar = BaseIncar.build(self.step_type, self.function)
-        formula = self.structure.composition.formula.replace(" ", "")
+        formula = self.structure.composition.to_pretty_string()
         incar["SYSTEM"] = formula + "-" + self.function + "-" + self.step_type
         incar.has_magnetic(self.structure)
         incar.update(self.incar_kwargs)
@@ -783,7 +783,8 @@ class StructureRelaxationJob(JobBase):
             result = {}
 
         self.final_structure = Structure.from_file(self.run_dir.joinpath("CONTCAR"))
-        self.final_structure.to(self.run_dir.parent.joinpath(f'{self.structure.composition.formula.replace(" ","")}-{self.function}.cif').as_posix())
+        self.final_structure.to(self.run_dir.parent.joinpath(
+            f'{self.structure.composition.to_pretty_string()}-{self.function}.cif').as_posix())
 
 
 
@@ -803,6 +804,9 @@ class SCFJob(JobBase):
             eig = Eigenval(self.path.joinpath("pbe/scf/EIGENVAL").as_posix())
             incar["NBANDS"] =eig.nbands*10
 
+        if self.job_type == "single_point_energy":
+            incar["LWAVE"] = False
+            incar["LCHARG"] = False
 
         return incar
 
@@ -836,8 +840,13 @@ class SCFJob(JobBase):
         vasprun = Vasprun(self.run_dir.joinpath(f"vasprun.xml"), parse_potcar_file=False, parse_dos=False)
         result[f"efermi_{self.function}"]=vasprun.efermi
         result[f"energy_{self.function}"]=vasprun.final_energy
+
         if self.job_type == "single_point_energy":
-            write_to_xyz(self.run_dir.joinpath("vasprun.xml"), "./train.xyz", append=True)
+            name = vasprun.final_structure.composition.to_pretty_string()
+
+            write_to_xyz(self.run_dir.joinpath("vasprun.xml"), f"./result/{name}.xyz", append=True)
+
+            write_to_xyz(self.run_dir.joinpath("vasprun.xml"), "./result/train.xyz", append=True)
 
         return result
 
@@ -1104,9 +1113,22 @@ class AimdJob(JobBase):
         
         :return:
         """
-        # vasprun = Vasprun(self.run_dir.joinpath(f"vasprun.xml"), parse_potcar_file=False, parse_dos=False)
+        vasprun = Vasprun(self.run_dir.joinpath(f"vasprun.xml"), parse_potcar_file=False, parse_dos=False)
         # result[f"efermi_{self.function}"]=vasprun.efermi
         # result[f"energy_{self.function}"]=vasprun.final_energy
+        name = vasprun.final_structure.composition.to_pretty_string()
+
+        energies = [step["e_0_energy"] for step in vasprun.ionic_steps]
+        steps = list(range(1, len(energies) + 1))
+        plt.figure(figsize=(3.5, 2.625))
+        plt.plot(steps, energies, label=name)
+        plt.ylabel("E0 Energy(eV)")
+        plt.xlabel("Time(fs)")
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(self.run_dir.joinpath("aimd.png"), dpi=self.dpi)
+
+
         write_to_xyz(self.run_dir.joinpath("vasprun.xml"), self.run_dir.joinpath("aimd.xyz"), append=False)
         return result
 
@@ -1646,8 +1668,8 @@ class VaspTool:
 
                 store_dataframe_as_json(structure_dataframe, file_path.name)
             else:
-                store_dataframe_as_json(structure_dataframe, "./all_result.json")
-                structure_dataframe.loc[:, structure_dataframe.columns != 'structure'].to_csv(f"./result.csv")
+                store_dataframe_as_json(structure_dataframe, "./result/all_result.json")
+                structure_dataframe.loc[:, structure_dataframe.columns != 'structure'].to_csv(f"./result/result.csv")
 
             # break
         logging.info("全部计算完成")
@@ -1724,7 +1746,8 @@ if __name__ == '__main__':
     calculate_type=["band","optic","cohp","dielectric","aimd","scf"]
     parser=build_argparse()
     args=parser.parse_args()
-
+    if not os.path.exists("./result"):
+        os.mkdir("./result")
     vasp = VaspTool(vasp_path=args.vasp_path,
                     mpirun_path=args.mpirun_path,
                     force_coverage=args.force_coverage,
