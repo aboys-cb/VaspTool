@@ -5,9 +5,16 @@
 # @email    : 1747193328@qq.com
 import os
 
+import matplotlib
+from monty.dev import requires
+
+matplotlib.use('Agg')
+
+
+
 from monty.serialization import loadfn
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 
 os.environ["PMG_DEFAULT_FUNCTIONAL"] = r"PBE_54"
 
@@ -29,7 +36,6 @@ import traceback
 
 import pandas as pd
 from monty.os import cd
-
 import datetime
 import os
 import subprocess
@@ -37,24 +43,39 @@ from tqdm import tqdm
 from monty.io import zopen
 from monty.json import MontyEncoder, MontyDecoder
 from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
-from pymatgen.io.lobster import Lobsterin,Lobsterout
 from typing import *
 from pymatgen.core import Structure
+
 from pymatgen.io.vasp.inputs import Incar, Poscar, Kpoints, VaspInput, Potcar, PotcarSingle
 from pymatgen.io.vasp.outputs import Vasprun, BSVasprun, Outcar, Eigenval, Wavecar
+
+from pymatgen.io.lobster import Lobsterin, Lobsterout
+
 from pymatgen.electronic_structure.plotter import BSPlotter, DosPlotter, BSDOSPlotter
 from pymatgen.symmetry.bandstructure import HighSymmKpath
+
 from pymatgen.analysis.solar import slme
+
 from pymatgen.io.ase import AseAtomsAdaptor
+
+try:
+    from phonopy import Phonopy
+    from phonopy.file_IO import write_FORCE_CONSTANTS, write_disp_yaml, write_FORCE_SETS
+    from phonopy.interface.calculator import get_default_physical_units
+    from phonopy.interface.phonopy_yaml import PhonopyYaml
+    from phonopy.phonon.band_structure import get_band_qpoints_and_path_connections
+    from pymatgen.io import phonopy
+except:
+    Phonopy = None
 
 try:
     from ase.io import read, write
 except:
     write = None
     read = None
-import matplotlib
 
-matplotlib.use('Agg')
+
+
 from matplotlib import pyplot as plt
 plt.rc('font', family='Times New Roman')
 
@@ -157,8 +178,7 @@ def check_in_out_file(path):
 # 将xyz 获取的
 def write_to_xyz(vaspxml_path, save_path, append=True):
     if setting.get("ExportXYZ"):
-
-        if write is None:
+        if read is None:
             logging.error("设置开启了导出xyz文件，但没有安装ase，请 pip install ase")
         else:
             atoms_list = []
@@ -262,6 +282,17 @@ def read_dataframe_from_file(file_path:Path, **kwargs) -> pd.DataFrame:
     df.drop("group_number", inplace=True, axis=1)
     df.reset_index(drop=True, inplace=True)
     return df
+
+
+def verify_path(path: Path) -> None:
+    """
+    会检查是否存在路径，若不存在，则创建该路径，支持多级目录创建
+    :param path:
+    :return:
+    """
+    if not path.exists():
+        # path.mkdir()
+        os.makedirs(path)
 class BaseIncar(Incar):
     PBE_EDIFF=1e-06
     PBE_EDIFFG=-0.01
@@ -334,7 +365,7 @@ class BaseIncar(Incar):
         #---------------------------------------------------------------------
         if system=="sr":
             base.update({
-                "LWAVE":False,"LCHARG":False,"NSW":30,"ISIF":3,"IBRION":2
+                "LWAVE": False, "LCHARG": False, "NSW": 100, "ISIF": 3, "IBRION": 2
             })
         elif  system=="scf":
             base.update({
@@ -455,7 +486,7 @@ class BaseKpoints:
             cls._instance = object.__new__(cls)
         return cls._instance
 
-    def __init__(self,kpoints_type):
+    def __init__(self, kpoints_type="Gamma"):
         if BaseKpoints.init_flag:
             return
 
@@ -485,19 +516,25 @@ class BaseKpoints:
             return Kpoints.monkhorst_automatic(kp)
         return Kpoints.gamma_automatic(kp)
 
-
-    def get_line_kpoints(self,path:Path,function:str,structure:Structure) -> Kpoints:
+    def get_line_kpoints(self, path: Path, function: str, structure: Structure, job_type="band_structure",
+                         step_type="band") -> Kpoints:
         if function=="pbe":
             if os.path.exists("./HIGHPATH"):
                 kpoints=Kpoints.from_file("./HIGHPATH")
+                # logging.info("使用自定义的高对称路径文件！")
+                # 下面这个循环 是将伽马点转换希腊字符，画图时的用
+                for i, k in enumerate(kpoints.labels):
+
+                    if "gamma" in k.lower():
+                        kpoints.labels[i] = "$\\Gamma$"
             else:
 
                 kpath = HighSymmKpath(structure, path_type="hinuma")
-                kpoints = Kpoints.automatic_linemode(self.get_kpoint_setting("band_structure","band",function), kpath)
+                kpoints = Kpoints.automatic_linemode(self.get_kpoint_setting(job_type, step_type, function), kpath)
                 # 下面这个循环 是将伽马点转换希腊字符，画图时的用
                 for i, k in enumerate(kpoints.labels):
-                    if k == "GAMMA":
-                        kpoints.labels[i] = "\\Gamma"
+                    if "gamma" in k.lower():
+                        kpoints.labels[i] = "$\\Gamma$"
 
             return kpoints
 
@@ -507,7 +544,7 @@ class BaseKpoints:
             pbe_kpoints = Kpoints.from_file(path.joinpath("pbe/band/KPOINTS").as_posix())
             kpoints1 = Kpoints.from_file(path.joinpath("pbe/scf/IBZKPT").as_posix())
 
-            kpoints = Kpoints("test", kpoints1.num_kpts + len(pbe_vasprun.actual_kpoints),
+            kpoints = Kpoints("Generated by VaspTool ", kpoints1.num_kpts + len(pbe_vasprun.actual_kpoints),
                               style=Kpoints.supported_modes.Reciprocal,
                               kpts=kpoints1.kpts + pbe_vasprun.actual_kpoints,
                               kpts_weights=kpoints1.kpts_weights + [0 for i in range(len(pbe_vasprun.actual_kpoints))])
@@ -523,7 +560,7 @@ class BaseKpoints:
             kpts: list[float | None] = []
             weights: list[float | None] = []
             all_labels: list[str | None] = []
-            kp = self.get_kpoint_setting("band_structure","scf",function)
+            kp = self.get_kpoint_setting(job_type, "scf", function)
             if isinstance(kp, int):
                 grid = Kpoints.automatic_density(structure, kp).kpts[0]
             else:
@@ -538,7 +575,7 @@ class BaseKpoints:
 
             kpath = HighSymmKpath(structure, path_type="hinuma")
             frac_k_points, labels = kpath.get_kpoints(
-                line_density=self.get_kpoint_setting("band_structure","band",function), coords_are_cartesian=False
+                line_density=self.get_kpoint_setting(job_type, step_type, function), coords_are_cartesian=False
             )
 
             for k, f in enumerate(frac_k_points):
@@ -591,7 +628,7 @@ class JobBase():
 
         #要计算的类型 比如能带
         #要计算的类型的细分步骤 优化 自洽 性质等
-        self.verify_path(self.run_dir)
+        verify_path(self.run_dir)
         logging.info("当前计算路径："+self.run_dir.as_posix())
         if self.function in ["gw"]:
             self.pseudopotential="gw"
@@ -675,15 +712,6 @@ class JobBase():
         potcar = Potcar(symbols=get_pot_symbols(self.structure.species,self.pseudopotential), functional="PBE_54")
         return potcar
 
-    def verify_path(self, path: Path) -> None:
-        """
-        会检查是否存在路径，若不存在，则创建该路径，支持多级目录创建
-        :param path:
-        :return:
-        """
-        if not path.exists():
-            # path.mkdir()
-            os.makedirs(path)
     def check_cover(self ):
         """
         检查输入文件 避免重复计算 如果不需要重复计算 返回True 否则返回False
@@ -707,7 +735,8 @@ class JobBase():
                     pass
         src_files=["WAVE*","CHG*","*.tmp"]
         for src in src_files:
-            src_file_list = glob.glob(self.run_dir.joinpath(src).as_posix())
+
+            src_file_list = self.run_dir.glob(src)
             for file in src_file_list:
                 Path(file).unlink()
 
@@ -804,7 +833,7 @@ class SCFJob(JobBase):
             eig = Eigenval(self.path.joinpath("pbe/scf/EIGENVAL").as_posix())
             incar["NBANDS"] =eig.nbands*10
 
-        if self.job_type == "single_point_energy":
+        if self.job_type in ["single_point_energy", "phono"]:
             incar["LWAVE"] = False
             incar["LCHARG"] = False
 
@@ -1026,7 +1055,9 @@ class BandStructureJob(JobBase):
         else:
             line_mode=False
 
-        vasprun = BSVasprun(self.run_dir.joinpath( "vasprun.xml").as_posix())
+        vasprun = BSVasprun(self.run_dir.joinpath("vasprun.xml").as_posix(),
+                            parse_projected_eigen=setting.get("ExportProjection", True)
+                            )
 
 
         bs = vasprun.get_band_structure(line_mode=line_mode, force_hybrid_mode=force_hybrid_mode)
@@ -1063,14 +1094,33 @@ class BandStructureJob(JobBase):
             pass
         if not line_mode:
             return result
+        if not self.run_dir.joinpath("data").exists():
+            self.run_dir.joinpath("data").mkdir()
+
+
         for spin, bands in bs.bands.items():
-            np.savetxt(self.run_dir.joinpath(f"band{spin}.csv"),
+            verify_path(self.run_dir.joinpath(f"data/spin{spin}"))
+
+            np.savetxt(self.run_dir.joinpath(f"data/spin{spin}/band.csv"),
                        np.vstack((np.array(bs.distance), bands - vasprun.efermi)).T, delimiter=",", fmt='%f')
+        # data=bs.get_projections_on_elements_and_orbitals({'Pb':['px','py',"pz"]})
+        # print(data)
+        # bs.get_projection_on_elements()
+        # if bs.projections:
+        #     #[band_index, kpoint_index, orbital_index,ion_index]
+        #     for spin, v in bs.projections.items():
+        #         print(v.shape)
+        #         for ion_index in range(v.shape[3]):
+        #             data=v[:,:,:,ion_index]
+        #             print(data.shape)
+        # np.save()
+        # np.savetxt(self.run_dir.joinpath(f"data/spin{spin}/band1.dat"),
+        #            v, delimiter=",", fmt='%f')
+
         plotter = BSPlotter(bs)
         plot = plotter.get_plot(ylim=(self.vb_energy, self.cb_energy), vbm_cbm_marker=True)
 
-
-        with open(self.run_dir.joinpath(f"band_lables.txt"), "w", encoding="utf8") as f:
+        with open(self.run_dir.joinpath(f"data/band_lables.txt"), "w", encoding="utf8") as f:
             f.write("distance\tlable\n")
             distance = plotter.get_ticks()["distance"]
             label = plotter.get_ticks()["label"]
@@ -1232,6 +1282,116 @@ class  OpticJob(JobBase):
         plt.clf()
 
         return result
+
+
+@requires(Phonopy, "请先安装phonopy！")
+class PhonopyJob():
+    pass
+
+    def __init__(self, structure: Structure, path: Path):
+        self.structure = structure
+
+        self.run_path = path.joinpath("pbe/phono")
+        verify_path(self.run_path)
+        self.ph_structure = phonopy.get_phonopy_structure(structure)
+        self.phonon = Phonopy(unitcell=self.ph_structure, supercell_matrix=config["KPOINTS"]["phono"]["super"])
+        self.phonon.generate_displacements(
+            distance=0.01,
+        )
+
+        self.disp_supercells = self.phonon.supercells_with_displacements
+        self.init_supercell = self.phonon.supercell
+        logging.info(f"一共生成{len(self.disp_supercells)}个结构")
+        displacements = self.phonon.displacements
+        # write_disp_yaml(
+        #     displacements=displacements,
+        #     supercell=self.init_supercell,
+        #     filename=self.path.joinpath("phonopy_disp.yaml"),
+        # )
+        units = get_default_physical_units("vasp")
+        phpy_yaml = PhonopyYaml(
+            physical_units=units, settings={}
+        )
+        phpy_yaml.set_phonon_info(self.phonon)
+        with open(self.run_path.joinpath("phonopy_disp.yaml"), "w") as w:
+            w.write(str(phpy_yaml))
+        self.structure.to(self.run_path.joinpath("POSCAR").as_posix(), fmt="poscar")
+        phonopy.get_pmg_structure(self.init_supercell).to(self.run_path.joinpath("SPOSCAR"), fmt="poscar")
+
+    @property
+    def supercell_structures(self):
+        index = 1
+        for cell in self.disp_supercells:
+            if cell is not None:
+                s = phonopy.get_pmg_structure(cell)
+                s.to(self.run_path.joinpath(f"POSCAR-{index:03d}").as_posix(), fmt="poscar")
+                index += 1
+                yield s
+
+    def set_forces(self, forces):
+        self.phonon.forces = forces
+
+        write_FORCE_SETS(self.phonon.dataset, self.run_path.joinpath("FORCE_SETS"))
+        self.phonon.produce_force_constants(calculate_full_force_constants=False)
+        write_FORCE_CONSTANTS(self.phonon.force_constants, filename=self.run_path.joinpath("FORCE_CONSTANTS"),
+                              p2s_map=self.phonon.primitive.p2s_map)
+
+    def get_bandstructure(self, plot=True):
+        kpoint = BaseKpoints().get_line_kpoints(None, function="pbe", structure=self.structure, job_type="phono",
+                                                step_type="band")
+        labels_dict = {a: k for a, k in zip(kpoint.labels, kpoint.kpts) if a != ""}
+
+        path = []
+        labels = []
+        for k, l in zip(kpoint.kpts, kpoint.labels):
+            # 去除重复路径
+            if path:
+                if path[-1] == list(k):
+                    continue
+                else:
+                    path.append(list(k))
+            else:
+                path.append(list(k))
+
+            if l.strip():
+                if labels:
+                    if labels[-1] == l.strip():
+                        continue
+                    else:
+                        labels.append(l.strip())
+                else:
+                    labels.append(l.strip())
+
+        path = [path]
+
+        qpoints, connections = get_band_qpoints_and_path_connections(path, npoints=kpoint.num_kpts,
+                                                                     rec_lattice=self.structure.lattice.reciprocal_lattice.matrix)
+
+        self.phonon.run_band_structure(qpoints, path_connections=connections, labels=labels)
+
+        self.phonon.write_yaml_band_structure(None, filename=self.run_path.joinpath("band.yaml"))
+        # 这里还没搞明白 感觉是pymatgen的PhononBSPlotter画图问题 先放下
+        # qpoints = np.vstack(qpoints)
+        # print(qpoints.shape)
+        # self.phonon.run_qpoints(qpoints)
+        # frequencies = self.phonon.band_structure.frequencies
+
+        # frequencies = np.vstack(frequencies).T
+
+        # frequencies = self.phonon.qpoints.frequencies.T
+        # print(frequencies.shape)
+
+        # phono_bandstructure=PhononBandStructureSymmLine(qpoints, frequencies, self.structure.lattice, labels_dict=labels_dict)
+        if plot:
+            self.phonon.plot_band_structure().savefig(self.run_path.joinpath("phonon_bandstructure.png"), dpi=150)
+            # plotter = PhononBSPlotter(phono_bandstructure)
+            # plotter.save_plot(self.run_path.joinpath("phonon_bandstructure.png"))
+        # return phono_bandstructure
+    
+
+
+
+
 class VaspTool:
     def __init__(self, cores: int = None,
                  mpirun_path: Path = "mpirun",
@@ -1241,7 +1401,8 @@ class VaspTool:
                  functions:list=["pbe"],
                  dft_u=False,
                  disable_relaxation=False,
-                 open_soc=False
+                 open_soc=False,
+                 incar_args={}
                  ):
         """
 
@@ -1284,6 +1445,7 @@ class VaspTool:
             "vasp_path":self.vasp_path,
             "cores":cores
         }
+        self.incar_args = incar_args
     def check_params(self):
         """
         做一些自检 包括泛函选择、vasp路径等
@@ -1362,12 +1524,13 @@ class VaspTool:
 
 
     def count_optic_dielectric_by_gw_bse(self,structure_info: pd.Series, path:Path):
-        band_job = BandStructureJob(structure=self.structure, path=path,function= "gw", **self.job_args)
+        band_job = BandStructureJob(structure=self.structure, path=path, function="gw", **self.job_args,
+                                    **self.incar_args)
 
         band_job.run()
         band_job.post_processing(structure_info)
 
-        optic_job = OpticJob(structure=self.structure, path=path,function="bse", **self.job_args)
+        optic_job = OpticJob(structure=self.structure, path=path, function="bse", **self.job_args, **self.incar_args)
 
         cp_file(band_job.run_dir.joinpath("WAVE*"),optic_job.run_dir)
         cp_file(band_job.run_dir.joinpath("*.tmp"),optic_job.run_dir)
@@ -1387,19 +1550,19 @@ class VaspTool:
             if not self.disable_relaxation:
                 job=StructureRelaxationJob(structure=self.structure, path=path,
                                            job_type="optic_dielectric",   function=function,
-                                           **self.job_args).run( )
+                                           **self.job_args, **self.incar_args).run( )
                 self.structure=job.final_structure
             # # # 进行scf自洽计算
             scf_job=SCFJob(structure=self.structure, path=path,
                            job_type="optic_dielectric",   function=function,
-                           **self.job_args).run()
+                           **self.job_args, **self.incar_args).run()
 
             scf_job.post_processing(structure_info)
 
 
 
             optic_job = OpticJob(structure=self.structure, path=path,
-                                 function=function, **self.job_args).run(remove_wavecar=True)
+                                 function=function, **self.job_args, **self.incar_args).run(remove_wavecar=True)
 
             optic_job.post_processing(structure_info)
 
@@ -1420,18 +1583,19 @@ class VaspTool:
             if not self.disable_relaxation:
                 job=StructureRelaxationJob(structure=self.structure, path=path,
                                            job_type="optic_dielectric",   function=function,
-                                           **self.job_args).run( )
+                                           **self.job_args, **self.incar_args).run( )
                 self.structure=job.final_structure
             # # # 进行scf自洽计算
             scf_job=SCFJob(structure=self.structure, path=path,
                            job_type="optic_dielectric",   function=function,
-                           **self.job_args).run()
+                           **self.job_args, **self.incar_args).run()
 
             scf_job.post_processing(structure_info)
 
             # #进行介电常数的
             dielectric_job = StaticDielectricJob(structure=self.structure, path=path,
-                                                 function=function, **self.job_args).run(remove_wavecar=True)
+                                                 function=function, **self.job_args, **self.incar_args).run(
+                remove_wavecar=True)
 
             dielectric_job.post_processing(structure_info)
 
@@ -1446,7 +1610,8 @@ class VaspTool:
 
     def calculate_band_by_gw(self,path,function):
 
-        band_job = BandStructureJob(structure=self.structure, path=path, function="gw", **self.job_args)
+        band_job = BandStructureJob(structure=self.structure, path=path, function="gw", **self.job_args,
+                                    **self.incar_args)
 
         band_job.run(remove_wavecar=True)
         result = band_job.post_processing()
@@ -1461,7 +1626,7 @@ class VaspTool:
             if not self.disable_relaxation:
                 job=StructureRelaxationJob(structure=self.structure, path=path,
                                            job_type="band_structure",   function=function,
-                                           **self.job_args).run( )
+                                           **self.job_args, **self.incar_args).run( )
 
 
                 self.structure=job.final_structure
@@ -1471,17 +1636,17 @@ class VaspTool:
 
             scf_job=SCFJob(structure=self.structure, path=path,
                            job_type="band_structure",   function=function,
-                           **self.job_args).run()
+                           **self.job_args, **self.incar_args).run()
 
             scf_job.post_processing(structure_info)
 
 
             dos_job = DosJob(structure=self.structure, path=path,
-                             function=function, **self.job_args).run(remove_wavecar=True)
+                             function=function, **self.job_args, **self.incar_args).run(remove_wavecar=True)
 
             dos_job.post_processing(structure_info)
             band_job = BandStructureJob(structure=self.structure, path=path,
-                                        function=function, **self.job_args).run(remove_wavecar=True)
+                                        function=function, **self.job_args, **self.incar_args).run(remove_wavecar=True)
 
             band_job.post_processing(structure_info)
             self.plot_bs_dos(band_job.run_dir.joinpath(f"vasprun.xml"),dos_job.run_dir.joinpath(f"vasprun.xml"),path.joinpath(f"{function}/band_structure_dos_{function}.png"))
@@ -1498,7 +1663,7 @@ class VaspTool:
                                          path=path,
                                          job_type="band_structure",
                                          function="pbe",
-                                         **self.job_args
+                                         **self.job_args, **self.incar_args
                                          ).run()
 
             self.structure = job.final_structure
@@ -1515,7 +1680,7 @@ class VaspTool:
                 path=path,
                 job_type="cohp",
                 function="pbe",
-                **self.job_args
+                **self.job_args, **self.incar_args
                            )
 
             cohp_job.build_lobster(basis_setting)
@@ -1548,20 +1713,52 @@ class VaspTool:
 
             job = StructureRelaxationJob(structure=self.structure, path=path,
                                          job_type="aimd", function="pbe",
-                                         **self.job_args).run()
+                                         **self.job_args, **self.incar_args).run()
 
             self.structure = job.final_structure
 
         aimd_job=AimdJob(
             structure=self.structure, path=path,
             job_type="aimd", function="pbe",
-            **self.job_args
+            **self.job_args, **self.incar_args
         )
         aimd_job.run(remove_wavecar=True)
         aimd_job.post_processing(
 
         )
         return structure_info
+
+    def count_phono(self, structure_info, path: Path = "./"):
+        self.structure: Structure = structure_info["structure"]
+        pass
+
+        self.incar_args["LREAL"] = False
+        self.incar_args["PREC"] = "Accurate"
+
+        if not self.disable_relaxation:
+            job = StructureRelaxationJob(structure=self.structure, path=path,
+                                         job_type="phono", function="pbe",
+                                         **self.job_args, **self.incar_args).run()
+            self.structure = job.final_structure
+
+        phono_job = PhonopyJob(self.structure, path)
+        forces = []
+        for index, structure in enumerate(phono_job.supercell_structures):
+            scf_job = SCFJob(structure=structure, path=path,
+                             job_type="phono", function="pbe", test=index + 1,
+                             **self.job_args, **self.incar_args).run(remove_wavecar=True)
+
+            vasprun = Vasprun(scf_job.run_dir.joinpath("vasprun.xml"), parse_potcar_file=False)
+
+            forces.append(vasprun.ionic_steps[0]["forces"])
+        forces = np.array(forces)
+
+        phono_job.set_forces(forces)
+
+        result = phono_job.get_bandstructure(plot=True)
+
+        return structure_info
+
 
     def count_scf(self, structure_info, path:Path="./"):
         self.structure :Structure= structure_info["structure"]
@@ -1572,11 +1769,12 @@ class VaspTool:
             if not self.disable_relaxation:
                 job=StructureRelaxationJob(structure=self.structure, path=path,
                                            job_type="single_point_energy",   function=function,
-                                           **self.job_args).run( )
+                                           **self.job_args, **self.incar_args).run()
+                self.structure = job.final_structure
 
             scf_job = SCFJob(structure=self.structure, path=path,
                              job_type="single_point_energy", function=function,
-                             **self.job_args).run(remove_wavecar=True)
+                             **self.job_args, **self.incar_args).run(remove_wavecar=True)
 
             scf_job.post_processing(structure_info)
 
@@ -1585,7 +1783,7 @@ class VaspTool:
         self.structure :Structure= structure_info["structure"]
         job = StructureRelaxationJob(structure=self.structure, path=path,
                                      job_type="band_structure",function= "pbe",
-                                     **self.job_args).run()
+                                     **self.job_args, **self.incar_args).run()
 
         self.structure = job.final_structure
         return structure_info
@@ -1605,7 +1803,7 @@ class VaspTool:
         for i in kps:
             job = StructureRelaxationJob(structure=self.structure, path=path,
                                          job_type="band_structure",function= "pbe",test=i,KPOINTS=Kpoints.gamma_automatic((i,i,i)),SIGMA=5,
-                                         **self.job_args).run()
+                                         **self.job_args, **self.incar_args).run()
         final_energy = Outcar(job.run_dir.joinpath( "OUTCAR")).final_fr_energy
         result.append(final_energy)
         plt.plot(kps, result)
@@ -1630,6 +1828,7 @@ class VaspTool:
             "cohp": self.count_cohp,
             "test": self.test,
             "aimd":self.count_aimd,
+            "phono": self.count_phono,
             "scf": self.count_scf
 
         }
@@ -1687,7 +1886,10 @@ def build_argparse():
     parser.add_argument(
         "path",type=Path,help="要计算的POSCAR路径，或者要批量计算的文件夹。"
     )
-
+    parser.add_argument(
+        "incar_args", type=str, help="对于INCAR的补充，将使用INCAR标准字段,可以设置多个空格隔开。例如 NSW=100 ENCUT=600",
+        nargs="*"
+    )
 
     parser.add_argument(
         "-v","--version",action="version",version=__version__
@@ -1743,10 +1945,38 @@ def build_argparse():
     )
 
     return parser
+
+
+def parse_input_incar_value(input_values: list | None):
+    result = {}
+
+    if not input_values:
+        return result
+    for input_value in input_values:
+
+        values = input_value.split("=")
+
+        if len(values) != 2:
+            logging.warning("输入的INCAR参数必须用等号连接，不同参数间用空格，比如：NSW=50。而不是：" + input_value)
+            continue
+
+        key, value = values
+        try:
+            v = Incar.proc_val(key, value)
+        except:
+            logging.warning("输入的INCAR参数必须用等号连接，不同参数间用空格，比如：NSW=50。而不是：" + input_value)
+            continue
+        result[key] = v
+    logging.info(f"通过脚本传入的INCAR参数为：{result}")
+    return result
+
+
+
 if __name__ == '__main__':
-    calculate_type=["band","optic","cohp","dielectric","aimd","scf"]
+    calculate_type = ["band", "optic", "cohp", "dielectric", "aimd", "phono", "scf"]
     parser=build_argparse()
     args=parser.parse_args()
+
     if not os.path.exists("./result"):
         os.mkdir("./result")
     vasp = VaspTool(vasp_path=args.vasp_path,
@@ -1757,7 +1987,8 @@ if __name__ == '__main__':
                     functions=args.function,
                     dft_u=args.u,
                     disable_relaxation=args.disable_sr,
-                    open_soc=args.open_soc
+                    open_soc=args.open_soc,
+                    incar_args=parse_input_incar_value(args.incar_args)
                     )
     vasp.set_plot_setting(vbm=args.energy_min,cbm=args.energy_max,dpi=args.dpi)
 

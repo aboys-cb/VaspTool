@@ -10,7 +10,7 @@ VASPTool 主要用于计算能带、态密度、介电常数、光学性质等�
 ### 功能特点
 
 - 支持多种泛函：PBE、HSE、SCAN、R2SCAN、MBJ
-- 支持单点能、能带、态密度、介电常数、光学、分子动力学计算
+- 支持声子谱（有限位移法）、单点能、能带、态密度、介电常数、光学、分子动力学计算
 - 支持作业管理系统提交
 
 ### 社区支持
@@ -43,6 +43,11 @@ pip install pymatgen seekpath
 pip install ase
 ```
 
+如果需要计算声子谱，还需安装 phonopy：
+
+```bash
+conda install -c conda-forge phonopy 
+```
 ## 配置说明
 
 - 修改 config.yaml 文件中的 `ExportXYZ` 设置为 True 以启用导出功能。
@@ -77,6 +82,13 @@ python VaspTool.py optic  Si2.cif
 python VaspTool.py band Si2.cif --function pbe hse
 ```
 
+- 进行声子谱计算：
+- 这里传入的原胞，未扩包前的。扩包比例修改config.yaml的k点文件下KPOINTS->phono ->super(大概165行)
+
+```bash
+python VaspTool.py phono Si2.cif  EDIFF=1e-8 EDIFFG=-0.01 
+```
+
 ### 分子动力学计算
 会在VaspTool.py同级目录保存一个train.xyz的文件，所以输入文件不要叫train.xyz
 - 计算单点能，禁止优化：
@@ -103,26 +115,14 @@ python VaspTool.py aimd POSCAR
 
 - 在config.yaml中指定元素的磁矩`MAGMOM`以及U值`U`，配置文件内置了一些从MP数据库获取的值。
 - 对于INCAR基本参数 比如`ENCAT`,`EDIFF`等 可以修改config.yaml的`INCAR`.
-- 对于特定性质的参数，一般默认即可，如果修改参考下面步骤。 比如分子动力学
-    1. 在VaspTool.py搜索count_aimd 函数 大概在 1532 行。
-    2. 找到下面的的代码
-        ```python
-        aimd_job=AimdJob(
-             structure=self.structure, path=path,
-             job_type="aimd", function="pbe",
-             **self.job_args
-         )
-         ```
-    3. 加入想要的参数 注意不要更改原有的东西，参数使用全大写的INCAR参数
-         ```python
-        aimd_job=AimdJob(
-             structure=self.structure, path=path,
-             job_type="aimd", function="pbe",
-             TEBEG=600,TEEND=600,NSW=1000,
-             **self.job_args
-         )
-         ```
-    4. 其他Job同理 传入全大写字段即可。
+  - 对于特定性质的参数，一般默认即可，如果修改参考下面步骤。 比如分子动力学
+    - 命令行传参
+    - 必须传入参数位置必须紧跟结构文件后面的位置 必须是INCAR标准字段 全大写。
+
+      ```bash
+      python VaspTool.py aimd POSCAR POTIM=1 NSW=5000 TEBEG=300 TEEND=500 --disable_sr
+      ```
+      其他Job同理 传入全大写字段即可。
 
 ### KPOINTS
 

@@ -7,6 +7,7 @@ SETTING:
   energy_min : -5 #画图的范围
   energy_max : 2 #画图的范围
   dpi : 300 #图片的dpi
+  ExportProjection: True
   ExportXYZ: True #在单点能以及分子动力学运行后 自动导出xyz文件
   UseInputFileName: False
   #UseInputFileName 如果为 True 在cache下新建文件夹将直接以输入文件名为名字，比如perovskite.cif   计算路径为perovskite
@@ -158,6 +159,17 @@ KPOINTS:
       default: 1000
     scf:
       default: 1000
+  phono:
+    sr:
+      default: 1000
+    super:
+      - [ 2,   0,   0 ]
+      - [ 0,   2,   0 ]
+      - [ 0,   0,   2 ]
+    scf:
+      default: 1000
+    band:
+      default: 100
 
 POTCAR:
   PBE54:
