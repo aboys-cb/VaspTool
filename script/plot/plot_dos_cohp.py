@@ -152,6 +152,7 @@ class DosCohpPlotter:
             for orb in config["orb"]:
 
                 for _orb in self.compose_orbit(orb):
+                    # complete_cohp.get_summed_cohp_by_label_list()
                     _cohp = complete_cohp.get_summed_cohp_by_label_and_orbital_list(label,[_orb] * len(label))
                     if cohp is None:
                         cohp=_cohp

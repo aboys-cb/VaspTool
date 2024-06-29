@@ -5,19 +5,28 @@
 # @email    : 1747193328@qq.com
 import matplotlib.pyplot as plt
 import numpy as np
+import tqdm
 from ase.io import read, write
 from pynep.calculate import NEP
 from pynep.select import FarthestPointSample
 from sklearn.decomposition import PCA
 
-a = read('train.xyz', ':')
+atoms_list = read('Cs16Cu8Sb8I48.xyz', ':')
+print(len(atoms_list))
+screen_list = []
+for atoms in atoms_list:
+
+    if (np.any(abs(atoms.calc.results["forces"]) > 50)):
+        continue
+    screen_list.append(atoms)
+print(len(screen_list))
 calc = NEP("nep.txt")
-print(calc)
-des = np.array([np.mean(calc.get_property('descriptor', i), axis=0) for i in a])
+des = np.array([np.mean(calc.get_property('descriptor', i), axis=0) for i in screen_list])
 sampler = FarthestPointSample(min_distance=0.02)
 selected_i = sampler.select(des, [])
-print(len(selected_i))
-write('selected.xyz', [a[i] for i in selected_i])
+
+for i in tqdm.tqdm(selected_i):
+    write('selected.xyz', screen_list[i], append=True)
 
 reducer = PCA(n_components=2)
 reducer.fit(des)

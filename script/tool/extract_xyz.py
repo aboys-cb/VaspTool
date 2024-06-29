@@ -21,4 +21,4 @@ else:
 extract = atoms[::num]
 print(len(extract))
 # 这里将抽取的追加写入到微扰的里面
-write("./scf.xyz", extract, format='extxyz', append=True)
+write("./perturb.xyz", extract, format='extxyz', append=True)

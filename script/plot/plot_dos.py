@@ -3,7 +3,10 @@
 # @Time    : 2024/5/9 22:40
 # @Author  : 兵
 # @email    : 1747193328@qq.com
+import matplotlib
 import numpy as np
+
+matplotlib.use("Agg")
 import palettable
 from matplotlib import pyplot as plt
 from pymatgen.electronic_structure.core import OrbitalType, Spin
@@ -167,12 +170,12 @@ class MyDosPlotter(DosPlotter):
 
             if invert_axes:
                 if col == 0:
-                    axes[0].set_ylabel("Energies (eV)" )
+                    axes[0].set_ylabel("Energy (eV)")
 
                 axes[col].set_xlabel("DOS (states/eV)" )
             else:
                 if col == len(dos_conf) - 1:
-                    axes[col].set_xlabel("Energies (eV)" )
+                    axes[col].set_xlabel("Energy (eV)")
 
                 axes[col].set_ylabel("DOS (states/eV)" )
 
@@ -185,12 +188,8 @@ if __name__ == '__main__':
     plotter = MyDosPlotter()
     dos_conf = [
 
-        {"path": "../cache/Cs1Ag0.5Bi0.5I3/vasprun.xml",
-         "projected": {"I": ["p"],"Ag": [ "d"],"Bi": ["p" ]   },
-         },
-
-        {"path": "../cache/Cs1Ag0.5Bi0.5I3/vasprun.xml",
-         "projected":{"I": ["p"],"Ag": [ "d"],"Bi": ["p" ]  },
+        {"path": "./vasprun.xml",
+         "projected": {"I": ["p"], "Ag": ["d"], "Bi": ["p"]},
          },
 
     ]

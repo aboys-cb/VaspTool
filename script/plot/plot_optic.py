@@ -7,15 +7,15 @@
 绘制光吸收曲线的图
 """
 import matplotlib.pyplot as plt
-from pymatgen.analysis.solar.slme import absorption_coefficient
+from pymatgen.analysis.solar.slme import absorption_coefficient, optics, slme
 from pymatgen.io.vasp.outputs import  Vasprun
 
 plt.style.use("./science.mplstyle")
 fig=plt.figure()
 sort_name=[
-    ("$Cs_2AgBiI_6$","../cache/Cs1Ag0.5Bi0.5I3/optic.xml"),
-    ("$Cs_2AgBi_{0.75}Sb_{0.25}I_6$", "../cache/Cs8Ag4Bi3Sb1I24/optic.xml"),
-    ("$Cs_2Cu_{0.25}Ag_{0.75}BiI_6$", "../cache/Cu/optic.xml")
+    # ("$Cs_2AgBiI_6$","../cache/Cs1Ag0.5Bi0.5I3/optic.xml"),
+    ("pbesol", "./Cs1Cu0.125Ag0.375Bi0.5I3.xml"),
+    ("hse", "./vasprun.xml")
 
 ]
 
@@ -23,8 +23,10 @@ sort_name=[
 for label,path in sort_name:
     vasp=Vasprun(path)
     new_en, new_abs =absorption_coefficient(vasp.dielectric)
-
     plt.plot(new_en, new_abs,label=label)
+    data = optics(path)
+
+    print(data[2], data[3], slme(*data, thickness=5e-6))
 # print(sort_name)
 plt.legend(ncol=2)
 plt.ylim(0,7e5)

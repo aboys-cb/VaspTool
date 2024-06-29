@@ -7,11 +7,11 @@ import glob
 import os
 
 import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import r2_score, mean_squared_error
-
-matplotlib.use("Agg")
 
 Config = [
     {"name": "energy", "unit": "eV/atom"},

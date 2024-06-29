@@ -1,3 +1,4 @@
+Version: 1.0.6
 SETTING:
   #PMG_VASP_PSP_DIR 是必须指定的 赝势文件的路径
   PMG_VASP_PSP_DIR : "~/POT_GGA_PAW_PBE_54/"
@@ -7,6 +8,11 @@ SETTING:
   energy_min : -5 #画图的范围
   energy_max : 2 #画图的范围
   dpi : 300 #图片的dpi
+  EOSStep: 0.05
+  EOSStepNum: 8
+  EOSModel: murnaghan
+  #EOSModel 选择其中一个   murnaghan birch birch_murnaghan pourier_tarantola vinet deltafactor numerical_eos
+
   ExportProjection: True
   ExportXYZ: True #在单点能以及分子动力学运行后 自动导出xyz文件
   UseInputFileName: False
@@ -137,7 +143,7 @@ KPOINTS:
     dielectric:
       default : 3000
 
-      pbe: 1000
+      pbe: 3000
       pbesol: 3000
       hse: 3000
     optic:
@@ -158,7 +164,12 @@ KPOINTS:
     sr:
       default: 1000
     scf:
-      default: 1000
+      default: 10
+  work_function:
+    sr:
+      default: 30
+    scf:
+      default: 30
   phono:
     sr:
       default: 1000
