@@ -122,6 +122,40 @@ python VaspTool.py scf train1.xyz
 python VaspTool.py aimd POSCAR
 ```
 
+# 作业管理系统提交(slurm为例)
+
+## 单任务提交
+
+使用路径下的python.sh即可
+
+```bash
+sbatch python.sh
+```
+
+## 多任务同时提交
+
+- 首先将需要计算的结构分好类
+- 假设现在我现在需要算500个结构的单点能 我想分成5个任务提交
+- 我在脚本目录下新建一个`structures`的文件夹。
+  - 如果我是每个结构单独的一个文件 比如：1.cif 2.cif
+    - 那么请在`structures`新建5个文件夹（名字随意） 然后每个文件存放100个模型文件。
+  - 如果我是一个文件包含很多模型的比如extxyz文件。
+    - 那么将5个xyz文件放在`structures`即可
+- 模型文件处理完成 开始准备提交
+- 我们需要将`script/tool/sub_all.py` 上传到服务器 和`VaspTool.py`一个路径。
+- 那么现在路径下有以下文件
+  - VaspTool.py
+  - config.yaml
+  - python.sh
+  - sub_all.py
+  - structures
+- 对于python.sh进行以下的修改 使其可以接受传入的参数。
+  - 比如最后一行是：`python -u VaspTool.py dielectric structures`
+  - 修改为`python -u VaspTool.py dielectric $1`
+- 提交任务
+  ```bash
+  python sub_all.py  structures
+  ```
 ## 参数调整
 
 ### INCAR参数
