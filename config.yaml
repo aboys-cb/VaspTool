@@ -1,4 +1,4 @@
-Version: 1.0.6
+Version: 1.0.7
 SETTING:
   #PMG_VASP_PSP_DIR 是必须指定的 赝势文件的路径
   PMG_VASP_PSP_DIR : "~/POT_GGA_PAW_PBE_54/"
@@ -20,36 +20,9 @@ SETTING:
   #UseInputFileName  如果为 False 则是根据体系的化学式命名  比如perovskite.cif   计算路径为 Cs1Pb1Cl3
 #磁矩 如果体系里 出现了一 下的元素 就设置磁矩 打开自旋
 MAGMOM:
-    Ce: 5
-    Ce3+: 1
-    Co: 0.6
-    Co3+: 0.6
-    Co4+: 1
-    Cr: 5
-    Dy3+: 5
-    Er3+: 3
-    Eu: 10
-    Eu2+: 7
-    Eu3+: 6
+
     Fe: 5
-    Gd3+: 7
-    Ho3+: 4
-    La3+: 0.6
-    Lu3+: 0.6
-    Mn: 5
-    Mn3+: 4
-    Mn4+: 3
-    Mo: 5
-    Nd3+: 3
-    Ni: 5
-    Pm3+: 4
-    Pr3+: 2
-    Sm3+: 5
-    Tb3+: 6
-    Tm3+: 2
-    V: 5
-    W: 5
-    Yb3+: 1
+
 #U值 给程序传入-u参数 就会开启+u 如果u值出现在下面的配置中 就设置 否则不开启
 
 U:
@@ -105,6 +78,9 @@ INCAR :
 
 KPOINTS:
   #k点的设置 可以指定[8,8,8] 也可以指定3000这种数字
+  #如果纯数字 小于100 则视为按长度取k点 比如设置45 k点为45/a,45/b,45/c
+  #并且 如果结构有真空层 真空层所在的轴会设置为1
+
   band_structure:
     sr:
       default : 3000
@@ -162,14 +138,19 @@ KPOINTS:
       default: [1,1,1]
   single_point_energy:
     sr:
-      default: 1000
+      default: [ 1,1,1 ]
     scf:
-      default: 10
+      default: [ 1,1,1 ]
   work_function:
     sr:
       default: 30
     scf:
       default: 30
+  bader:
+    sr:
+      default: [ 1,1,1 ]
+    scf:
+      default: [ 20,20,1 ]
   phono:
     sr:
       default: 1000

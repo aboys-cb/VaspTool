@@ -13,7 +13,7 @@ from monty.dev import requires
 from monty.serialization import loadfn
 from ruamel.yaml.comments import CommentedMap
 
-__version__ = "1.0.6"
+__version__ = "1.0.7"
 
 os.environ["PMG_DEFAULT_FUNCTIONAL"] = r"PBE_54"
 
@@ -39,13 +39,13 @@ from monty.os import cd
 import datetime
 import os
 import subprocess
+from typing import *
+from functools import partial
 from tqdm import tqdm
 from monty.io import zopen
 from monty.json import MontyEncoder, MontyDecoder
 from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
-from typing import *
 from pymatgen.core import Structure, Lattice
-
 from pymatgen.io.vasp.inputs import Incar, Poscar, Kpoints, VaspInput, Potcar, PotcarSingle
 from pymatgen.io.vasp.outputs import Vasprun, BSVasprun, Outcar, Eigenval, Wavecar, Locpot
 
@@ -53,7 +53,7 @@ from pymatgen.io.lobster import Lobsterin, Lobsterout
 
 from pymatgen.electronic_structure.plotter import BSPlotter, DosPlotter, BSDOSPlotter
 from pymatgen.symmetry.bandstructure import HighSymmKpath
-
+from pymatgen.command_line.bader_caller import bader_analysis_from_path
 from pymatgen.analysis.solar import slme
 from pymatgen.analysis.eos import EOS
 
@@ -104,7 +104,7 @@ potcar_gw_config = config.get("POTCAR", {}).get("GW")
 step_base_incar = {
     "sr": {
         "add": {
-            "LWAVE": False, "LCHARG": False, "NSW": 100, "ISIF": 3, "IBRION": 2
+            "LWAVE": False, "LCHARG": False, "NSW": 100, "ISIF": 3, "IBRION": 2, "ALGO": "Fast"
         },
         "remove": []
     },
@@ -114,6 +114,7 @@ step_base_incar = {
         },
         "remove": []
     },
+
 
     "dos": {
         "add": {
@@ -128,6 +129,7 @@ step_base_incar = {
         },
         "remove": []
     },
+
     "optic": {
         "add": {
             "ISTART": 1, "NSW": 0, "LWAVE": False,
@@ -166,6 +168,7 @@ function_base_incar = {
             "scf": {
                 "ISTART": 1, "ALGO": "Damped", "ICHARG": 0
             },
+
             "dos": {"ALGO": "Normal", "ICHARG": 1,
                     },
             "band": {
@@ -343,7 +346,7 @@ def write_to_xyz(vaspxml_path, save_path, append=True):
 
                 atom.calc.results['energy'] = atom.calc.results['free_energy']
 
-                atom.info['Config_type'] = "OUTCAR"
+                atom.info['Config_type'] = "aimd"
                 atom.info['Weight'] = 1.0
                 del atom.calc.results['stress']
                 del atom.calc.results['free_energy']
@@ -890,6 +893,42 @@ class StructureRelaxationJob(JobBase):
                         return self.run(**kwargs)
         return self
 
+    def plot_energy_force(self):
+
+        out = Outcar(self.run_dir.joinpath("OUTCAR"))
+
+        out.read_pattern({
+            "e_fr_energy": r"free  energy   TOTEN\s+=\s+([\d\-\.]+)",
+        }, postprocess=float)
+
+        energy = np.array(out.data["e_fr_energy"])
+
+        energy = energy.flatten()
+
+        a = out.read_table_pattern(r"TOTAL-FORCE \(eV/Angst\)\n\s*\-+\n", r"\s+".join([r"(\-*[\.\d]+)"] * 6), r"-*\n",
+                                   last_one_only=False, postprocess=float)
+
+        force = np.array(a)[:, :, 3:]
+        force = force.reshape((force.shape[0], -1))
+        max_froce = np.max(force, 1)
+
+        result = np.vstack([np.arange(energy.shape[0]), energy, max_froce]).T
+
+        fig, axes = plt.subplots(2, 1, sharex=True)
+        axes1, axes2 = axes
+        axes1.plot(result[:, 0], result[:, 1], label="energy", color="red")
+        axes1.set_ylabel("energy(eV)")
+        axes1.legend()
+
+        axes2.plot(result[:, 0], result[:, 2], label="max force", color="green")
+        axes2.set_ylabel("max force")
+        axes2.legend()
+
+        axes2.set_xlabel("steps")
+        plt.tight_layout()
+        plt.savefig(self.run_dir.joinpath("energy_forces.png"), dpi=150)
+
+
     def post_processing(self, result=None):
         if result is None:
             result = {}
@@ -898,11 +937,14 @@ class StructureRelaxationJob(JobBase):
         self.final_structure.to(self.run_dir.parent.joinpath(
             f'{self.final_structure.composition.to_pretty_string()}-{self.function}.cif').as_posix())
 
-
+        try:
+            self.plot_energy_force()
+        except:
+            pass
 class SCFJob(JobBase):
-    def __init__(self, **kwargs):
+    def __init__(self, step_type="scf", **kwargs):
 
-        super().__init__( step_type="scf", **kwargs)
+        super().__init__(step_type=step_type, **kwargs)
         """
         因为scf后面会用到很多 所以要根据job_type 区分不同场景的
         """
@@ -960,15 +1002,18 @@ class SCFJob(JobBase):
 
 class WorkFunctionJob(SCFJob):
     def __init__(self, **kwargs):
-        super().__init__(job_type="work_function", folder="work_function", **kwargs)
+        super().__init__(job_type="work_function", folder="work_function", step_type="scf", **kwargs)
 
     @cached_property
     def incar(self):
         incar = super().incar
         incar["LVHAR"] = True
-        if self.function == "hse":
-            if incar.get("ALGO") == "Damped":
-                incar["ALGO"] = "N"
+
+        if get_vacuum_axis(self.structure, 5) is not None:
+            incar["LDIPOL"] = True
+            incar["IDIPOL"] = get_vacuum_axis(self.structure, 5) + 1
+
+
         return incar
 
     def post_processing(self, result=None):
@@ -1380,6 +1425,57 @@ class OpticJob(JobBase):
         return result
 
 
+class BaderJob(SCFJob):
+    def __init__(self, **kwargs):
+        super().__init__(job_type="bader", step_type="scf", folder="bader", **kwargs)
+
+    @cached_property
+    def incar(self):
+        incar = super().incar
+        incar["LAECHG"] = True
+
+        return incar
+
+    def save_summary(self, summary):
+        with open(self.run_dir.joinpath("ACF.dat"), "w", encoding="utf8") as f:
+            header = "Id,X,Y,Z,label,charge,transfer,min dist,atomic volume".split(",")
+
+            header = [i.center(10) for i in header]
+            header_text = "".join(header)
+            f.write(header_text)
+            f.write("\n")
+            f.write("-" * 100)
+            f.write("\n")
+
+            for index in range(len(self.structure)):
+                site = self.structure[index]
+                line = [index + 1, round(site.x, 4), round(site.y, 4), round(site.z, 4), site.label,
+                        round(summary['charge'][index], 4),
+                        round(summary['charge_transfer'][index], 4),
+                        round(summary['min_dist'][index], 4),
+                        round(summary['atomic_volume'][index], 4)]
+                line = [str(i).center(10) for i in line]
+
+                f.write("".join(line))
+                f.write("\n")
+            f.write("-" * 100)
+            f.write("\n")
+
+            f.write(f"vacuum charge :   {summary['vacuum_charge']}\n")
+            f.write(f"vacuum volume :   {summary['vacuum_volume']}\n")
+            f.write(f"bader version :   {summary['bader_version']}\n")
+
+    def post_processing(self, result=None):
+        result = super().post_processing(result)
+        logging.info("\t开始bader电荷分析。")
+        summary = bader_analysis_from_path(self.run_dir.as_posix())
+        logging.info("\tbader电荷分析完成。")
+
+        self.save_summary(summary)
+
+        return result
+
+
 @requires(Phonopy, "请先安装phonopy！")
 class PhonopyJob():
     pass
@@ -1582,6 +1678,7 @@ class VaspTool:
         :param file_name: 要保存的图片路径,这里是路径。比如./band.png
         :return:
         """
+
         if not (os.path.exists(bs_path) and os.path.exists(dos_path)):
             logging.warning("必须计算完能带和dos后才能画能带dos图")
             return
@@ -1691,7 +1788,7 @@ class VaspTool:
         band_job.run(remove_wavecar=True)
         result = band_job.post_processing()
 
-    def count_band_structure(self, structure_info, path: Path = "./") -> pd.Series:
+    def count_band_structure(self, structure_info, path: Path = "./", channl="banddos") -> pd.Series:
         self.structure: Structure = structure_info["structure"]
 
         for function in self.functions:
@@ -1713,15 +1810,25 @@ class VaspTool:
 
             scf_job.post_processing(structure_info)
 
-            dos_job = DosJob(structure=self.structure, path=path,
-                             function=function, **self.job_args, **self.incar_args).run(remove_wavecar=True)
+            if "dos" in channl:
+                dos_job = DosJob(structure=self.structure, path=path,
+                                 function=function, **self.job_args, **self.incar_args).run(remove_wavecar=True)
 
-            dos_job.post_processing(structure_info)
-            band_job = BandStructureJob(structure=self.structure, path=path,
-                                        function=function, **self.job_args, **self.incar_args).run(remove_wavecar=True)
+                dos_job.post_processing(structure_info)
+                dos_vasprun = dos_job.run_dir.joinpath(f"vasprun.xml")
+            else:
+                dos_vasprun = path.joinpath(f"{function}/dos/vasprun.xm")
+            if "band" in channl:
+                band_job = BandStructureJob(structure=self.structure, path=path,
+                                            function=function, **self.job_args, **self.incar_args).run(
+                    remove_wavecar=True)
 
-            band_job.post_processing(structure_info)
-            self.plot_bs_dos(band_job.run_dir.joinpath(f"vasprun.xml"), dos_job.run_dir.joinpath(f"vasprun.xml"),
+                band_job.post_processing(structure_info)
+                band_vasprun = band_job.run_dir.joinpath(f"vasprun.xml")
+            else:
+                band_vasprun = path.joinpath(f"{function}/band/vasprun.xml")
+
+            self.plot_bs_dos(band_vasprun, dos_vasprun,
                              path.joinpath(f"{function}/band_structure_dos_{function}.png"))
             structure_info[structure_info.index != 'structure'].to_csv(
                 path.joinpath(f"{function}/result_{function}.csv"))
@@ -1880,6 +1987,26 @@ class VaspTool:
 
         return structure_info
 
+    def count_bader(self, structure_info, path: Path = "./"):
+        self.structure: Structure = structure_info["structure"]
+
+        for function in self.functions:
+            # # # 进行scf自洽计算
+
+            if not self.disable_relaxation:
+                job = StructureRelaxationJob(structure=self.structure, path=path,
+                                             job_type="bader", function=function,
+                                             **self.job_args, **self.incar_args).run()
+                self.structure = job.final_structure
+
+            scf_job = BaderJob(structure=self.structure, path=path,
+                               function=function,
+                               **self.job_args, **self.incar_args).run(remove_wavecar=True)
+
+            scf_job.post_processing(structure_info)
+
+        return structure_info
+
     def count_eos(self, structure_info, path: Path = "./"):
         self.structure: Structure = structure_info["structure"]
         step = config["SETTING"].get("EOSStep")
@@ -1987,8 +2114,14 @@ class VaspTool:
         logging.info(f"一共读取到{structure_dataframe.shape[0]}个文件")
 
         structure_dataframe: pd.DataFrame
+
         callback_function = {
-            "band": self.count_band_structure,
+            "band": partial(self.count_band_structure, channl="band"),
+            "banddos": partial(self.count_band_structure, channl="banddos"),
+            "dos": partial(self.count_band_structure, channl="dos"),
+
+            # "band": self.count_band_structure,
+
             "optic": self.count_optic,
             "dielectric": self.count_dielectric,
             "sr": self.cb_sr,
@@ -1999,6 +2132,7 @@ class VaspTool:
             "scf": self.count_scf,
             "work_function": self.count_work_function,
             "eos": self.count_eos,
+            "bader": self.count_bader,
 
         }
 
@@ -2145,7 +2279,11 @@ def parse_input_incar_value(input_values: list | None):
 
 if __name__ == '__main__':
     logging.info(f"VaspTool-{__version__}")
-    calculate_type = ["band", "optic", "cohp", "dielectric", "aimd", "phono", "scf", "work_function", "eos"]
+    calculate_type = ["band", "dos", "banddos", "optic", "cohp",
+                      "dielectric", "aimd", "phono",
+                      "scf", "work_function", "eos",
+                      "bader"
+                      ]
     parser = build_argparse()
     args = parser.parse_args()
 

@@ -10,7 +10,8 @@ VASPTool 主要用于计算能带、态密度、介电常数、光学性质等�
 ### 功能特点
 
 - 支持多种泛函：PBE、HSE、SCAN、R2SCAN、MBJ
-- 支持声子谱（有限位移法）、单点能、能带、态密度、介电常数、光学、分子动力学计算、功函数
+- 支持声子谱（有限位移法）[phono]、单点能[scf]、能带态密度[banddos]、能带[band]、态密度[dos]、介电常数[dielectric]、光学[optic]
+  、分子动力学计算[aimd]、功函数[work_function]、bader电荷[bader]
 - 支持作业管理系统提交
 
 ### 社区支持
@@ -30,8 +31,13 @@ VASPTool 主要用于计算能带、态密度、介电常数、光学性质等�
 
 ## 安装教程
 
-在使用时 只需要复制
-使用 pip 安装必需的库：`VaspTool.py`和`config.yaml`即可。
+可以使用conda新建一个虚拟环境
+
+```bash
+conda create -n mysci python=3.10
+```
+
+使用 pip 安装必需的库：
 
 ```bash
 pip install pymatgen seekpath
@@ -48,6 +54,8 @@ pip install ase
 ```bash
 conda install -c conda-forge phonopy 
 ```
+
+在使用时 只需要复制`VaspTool.py` 和`config.yaml`
 ## 配置说明
 
 - 修改 config.yaml 文件中的 `ExportXYZ` 设置为 True 以启用导出功能。
@@ -64,6 +72,11 @@ python VaspTool.py -h
 
 ### 计算示例
 
+最基本的提交格式
+
+```bash
+python VaspTool.py 计算类似 计算的模型路径[文件夹或者文件] 可选[一些incar设置 比如ISPIN=1]
+```
 - 能带和态密度计算：
 
 ```bash
