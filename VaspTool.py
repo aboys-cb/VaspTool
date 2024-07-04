@@ -4,7 +4,7 @@
 # @Author  : 兵
 # @email    : 1747193328@qq.com
 import os
-from functools import cached_property
+from functools import cached_property, partial
 
 import matplotlib
 
@@ -13,7 +13,7 @@ from monty.dev import requires
 from monty.serialization import loadfn
 from ruamel.yaml.comments import CommentedMap
 
-__version__ = "1.0.7"
+__version__ = "1.0.8"
 
 os.environ["PMG_DEFAULT_FUNCTIONAL"] = r"PBE_54"
 
@@ -40,7 +40,7 @@ import datetime
 import os
 import subprocess
 from typing import *
-from functools import partial
+
 from tqdm import tqdm
 from monty.io import zopen
 from monty.json import MontyEncoder, MontyDecoder
@@ -146,7 +146,7 @@ step_base_incar = {
     },
     "aimd": {
         "add": {
-            "ALGO": "N", "IBRION": 0, "MDALGO": 2, "ISYM": 0,
+            "ALGO": "Normal", "IBRION": 0, "MDALGO": 2, "ISYM": 0,
             "POTIM": 1, "NSW": 3000, "TEBEG": 300, "TEEND": 300,
             "SMASS": 1, "LREAL": "Auto", "ISIF": 2, "ADDGRID": True
         },
@@ -333,24 +333,26 @@ def check_in_out_file(path):
 
 
 # 将xyz 获取的
-def write_to_xyz(vaspxml_path, save_path, append=True):
+def write_to_xyz(vaspxml_path, save_path, Config_type, append=True):
     if setting.get("ExportXYZ"):
         if ase_read is None:
             logging.error("设置开启了导出xyz文件，但没有安装ase，请 pip install ase")
         else:
             atoms_list = []
             atoms = ase_read(vaspxml_path, index=":")
+            index = 1
             for atom in atoms:
                 xx, yy, zz, yz, xz, xy = -atom.calc.results['stress'] * atom.get_volume()  # *160.21766
                 atom.info['virial'] = np.array([(xx, xy, xz), (xy, yy, yz), (xz, yz, zz)])
 
                 atom.calc.results['energy'] = atom.calc.results['free_energy']
 
-                atom.info['Config_type'] = "aimd"
+                atom.info['Config_type'] = Config_type + str(index)
                 atom.info['Weight'] = 1.0
                 del atom.calc.results['stress']
                 del atom.calc.results['free_energy']
                 atoms_list.append(atom)
+                index += 1
 
             ase_write(save_path, atoms_list, format='extxyz', append=append)
 
@@ -380,7 +382,7 @@ def load_dataframe_from_json(filename, pbar=True, decode=True):
         return pd.DataFrame(dataframe_data)
 
 
-def read_dataframe_from_file(file_path: Path, **kwargs) -> pd.DataFrame:
+def read_dataframe_from_file(file_path: Path, duplicated=True, **kwargs) -> pd.DataFrame:
     """
     从指定路径读取结构 可以是文件夹路径、结构路径
 
@@ -392,7 +394,7 @@ def read_dataframe_from_file(file_path: Path, **kwargs) -> pd.DataFrame:
         for p in file_path.iterdir():
 
             try:
-                s = read_dataframe_from_file(p)
+                s = read_dataframe_from_file(p, False)
                 systems.append(s)
             except:
                 logging.warning(f"读取结构文件{p}失败。")
@@ -427,15 +429,18 @@ def read_dataframe_from_file(file_path: Path, **kwargs) -> pd.DataFrame:
 
         else:
             raise ValueError(f"仅支持后缀为POSCAR、cif、vasp、json、xyz类型的文件")
-    duplicated = df[df.duplicated("system", False)]
 
-    group = duplicated.groupby("system")
-    df["group_number"] = group.cumcount()
-    df["group_number"] = df["group_number"].fillna(-1)
-    df["group_number"] = df["group_number"].astype(int)
-    df['system'] = df.apply(
-        lambda row: f"{row['system']}-{row['group_number'] + 1}" if row['group_number'] >= 0 else row['system'], axis=1)
-    df.drop("group_number", inplace=True, axis=1)
+    if duplicated:
+        duplicated = df[df.duplicated("system", False)]
+
+        group = duplicated.groupby("system")
+        df["group_number"] = group.cumcount()
+        df["group_number"] = df["group_number"].fillna(-1)
+        df["group_number"] = df["group_number"].astype(int)
+        df['system'] = df.apply(
+            lambda row: f"{row['system']}-{row['group_number'] + 1}" if row['group_number'] >= 0 else row['system'],
+            axis=1)
+        df.drop("group_number", inplace=True, axis=1)
     df.reset_index(drop=True, inplace=True)
     return df
 
@@ -703,7 +708,6 @@ class JobBase():
                 # 暂且把全大写的分配到incar 后面有bug再说
                 self.incar_kwargs[k] = v
             else:
-
                 setattr(self, k, v)
 
         # 要计算的类型 比如能带
@@ -991,10 +995,11 @@ class SCFJob(JobBase):
 
         if self.job_type == "single_point_energy":
             name = vasprun.final_structure.composition.to_pretty_string()
+            config_type = self.structure.properties.get("Config_type", f"scf-{name}")
 
-            write_to_xyz(self.run_dir.joinpath("vasprun.xml"), f"./result/{name}.xyz", append=True)
+            write_to_xyz(self.run_dir.joinpath("vasprun.xml"), f"./result/{name}.xyz", config_type, append=True)
 
-            write_to_xyz(self.run_dir.joinpath("vasprun.xml"), "./result/train.xyz", append=True)
+            write_to_xyz(self.run_dir.joinpath("vasprun.xml"), f"./result/train.xyz", config_type, append=True)
 
 
         return result
@@ -1283,8 +1288,9 @@ class BandStructureJob(JobBase):
 
 class AimdJob(JobBase):
 
-    def __init__(self, **kwargs):
-        super().__init__(step_type="aimd", **kwargs)
+    def __init__(self, TEBEG=300, TEEND=300, NSW=3000, **kwargs):
+        folder = f"aimd({TEBEG}-{TEEND}k)@{NSW}"
+        super().__init__(step_type="aimd", TEBEG=TEBEG, TEEND=TEEND, NSW=NSW, folder=folder, **kwargs)
 
     # @property
     # def incar(self):
@@ -1299,16 +1305,8 @@ class AimdJob(JobBase):
 
         return super().run(**kwargs)
 
-    def post_processing(self, result=None):
-        if result is None:
-            result = {}
-        """
-        
-        :return:
-        """
-        vasprun = Vasprun(self.run_dir.joinpath(f"vasprun.xml"), parse_potcar_file=False, parse_dos=False)
-        # result[f"efermi_{self.function}"]=vasprun.efermi
-        # result[f"energy_{self.function}"]=vasprun.final_energy
+    def plot_aimd(self, vasprun):
+
         name = vasprun.final_structure.composition.to_pretty_string()
 
         energies = [step["e_0_energy"] for step in vasprun.ionic_steps]
@@ -1321,7 +1319,59 @@ class AimdJob(JobBase):
         plt.tight_layout()
         plt.savefig(self.run_dir.joinpath("aimd.png"), dpi=self.dpi)
 
-        write_to_xyz(self.run_dir.joinpath("vasprun.xml"), self.run_dir.joinpath("aimd.xyz"), append=False)
+    def get_ionic_steps_index(self, vasprun: Vasprun):
+        index = 0
+        result = []
+        ionic_steps = vasprun.ionic_steps
+        nionic_steps = vasprun.nionic_steps
+        for md_i, md in enumerate(vasprun.md_data):
+
+            if md["energy"]["e_0_energy"] == ionic_steps[index]["e_0_energy"]:
+                result.append(md_i + 1)
+
+                index += 1
+                if index == nionic_steps:
+                    break
+
+        return result
+
+    def plot_aimd_ml(self, vasprun):
+        name = vasprun.final_structure.composition.to_pretty_string()
+
+        energies = [step["energy"]["e_0_energy"] for step in vasprun.md_data]
+        steps = list(range(1, len(energies) + 1))
+        plt.figure()
+        plt.plot(steps, energies, label=name)
+
+        energies = [step["e_0_energy"] for step in vasprun.ionic_steps]
+
+        index = self.get_ionic_steps_index(vasprun)
+        if len(index) == len(energies):
+            plt.scatter(index, energies, label="Aimd", s=4, c="red")
+
+        plt.ylabel("E0 Energy(eV)")
+        plt.xlabel("Time(fs)")
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(self.run_dir.joinpath("aimd-ml.png"), dpi=self.dpi)
+
+    def post_processing(self, result=None):
+        if result is None:
+            result = {}
+        """
+        
+        :return:
+        """
+        vasprun = Vasprun(self.run_dir.joinpath(f"vasprun.xml"), parse_potcar_file=False, parse_dos=False)
+
+        if self.incar.get("ML_LMLFF"):
+            # 机器学习
+            self.plot_aimd_ml(vasprun)
+        else:
+            self.plot_aimd(vasprun)
+        config_type = f"{self.folder}-({self.path.name})-"
+
+        write_to_xyz(self.run_dir.joinpath("vasprun.xml"), self.run_dir.joinpath("aimd.xyz"), config_type, append=False)
         return result
 
 
@@ -2111,6 +2161,7 @@ class VaspTool:
         if structure_dataframe.empty:
             logging.error("计算为空，请检查输入文件")
             return
+
         logging.info(f"一共读取到{structure_dataframe.shape[0]}个文件")
 
         structure_dataframe: pd.DataFrame
@@ -2128,6 +2179,8 @@ class VaspTool:
             "cohp": self.count_cohp,
             "test": self.test,
             "aimd": self.count_aimd,
+            "aimd-ml": self.count_aimd,
+
             "phono": self.count_phono,
             "scf": self.count_scf,
             "work_function": self.count_work_function,
@@ -2280,7 +2333,7 @@ def parse_input_incar_value(input_values: list | None):
 if __name__ == '__main__':
     logging.info(f"VaspTool-{__version__}")
     calculate_type = ["band", "dos", "banddos", "optic", "cohp",
-                      "dielectric", "aimd", "phono",
+                      "dielectric", "aimd", "aimd-ml", "phono",
                       "scf", "work_function", "eos",
                       "bader"
                       ]
@@ -2289,6 +2342,12 @@ if __name__ == '__main__':
 
     if not os.path.exists("./result"):
         os.mkdir("./result")
+    incar_args = parse_input_incar_value(args.incar_args)
+    if args.calculate_type == "aimd-ml":
+        incar_args["ML_LMLFF"] = True
+        incar_args["ML_MODE"] = "train"
+
+
     vasp = VaspTool(vasp_path=args.vasp_path,
                     mpirun_path=args.mpirun_path,
                     force_coverage=args.force_coverage,
@@ -2298,7 +2357,7 @@ if __name__ == '__main__':
                     dft_u=args.u,
                     disable_relaxation=args.disable_sr,
                     open_soc=args.open_soc,
-                    incar_args=parse_input_incar_value(args.incar_args)
+                    incar_args=incar_args
                     )
     vasp.set_plot_setting(vbm=args.energy_min, cbm=args.energy_max, dpi=args.dpi)
 

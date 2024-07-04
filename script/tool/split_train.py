@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 from ase.io import read, write
 from sklearn.model_selection import train_test_split
+from sklearn.utils import shuffle
 from tqdm import tqdm
 
 if Path("train-0.9.xyz").exists():
@@ -24,6 +25,8 @@ else:
     for file in path.glob("*.xyz"):
         files.append(file)
 count = 0
+trains = []
+tests = []
 for file in tqdm(files, "文件分割"):
     atoms_list = read(file, ":", format="extxyz")
     screen_list = []
@@ -35,7 +38,11 @@ for file in tqdm(files, "文件分割"):
     count += len(screen_list)
     train, test = train_test_split(screen_list, test_size=0.1, random_state=88, shuffle=True)
     # 这里append=True 考虑可以将多个体系合并下
+    trains.extend(train)
+    tests.extend(test)
+trains = shuffle(trains)
+tests = shuffle(tests)
 
-    write("./train-0.9.xyz", train, format='extxyz', append=True)
-    write("./test-0.1.xyz", test, format='extxyz', append=True)
+write("./train-0.9.xyz", trains, format='extxyz', append=True)
+write("./test-0.1.xyz", tests, format='extxyz', append=True)
 print(f"数据集一共有{count}条")

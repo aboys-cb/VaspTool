@@ -11,7 +11,7 @@ from pynep.calculate import NEP
 from pynep.select import FarthestPointSample
 from sklearn.decomposition import PCA
 
-atoms_list = read('Cs16Cu8Sb8I48.xyz', ':')
+atoms_list = read('train.xyz', ':')
 print(len(atoms_list))
 screen_list = []
 for atoms in atoms_list:
@@ -22,7 +22,7 @@ for atoms in atoms_list:
 print(len(screen_list))
 calc = NEP("nep.txt")
 des = np.array([np.mean(calc.get_property('descriptor', i), axis=0) for i in screen_list])
-sampler = FarthestPointSample(min_distance=0.02)
+sampler = FarthestPointSample(min_distance=0.01)
 selected_i = sampler.select(des, [])
 
 for i in tqdm.tqdm(selected_i):

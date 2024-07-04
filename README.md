@@ -83,6 +83,7 @@ python VaspTool.py 计算类似 计算的模型路径[文件夹或者文件] 可
 python VaspTool.py band Si2.cif
 ```
 
+
 - 光学性质计算：
 
 ```bash
@@ -103,7 +104,9 @@ python VaspTool.py phono Si2.cif  EDIFF=1e-8 EDIFFG=-0.01
 ```
 
 ### 分子动力学计算
-会在VaspTool.py同级目录保存一个train.xyz的文件，所以输入文件不要叫train.xyz
+
+会在VaspTool.py同级目录result保存一个train.xyz的文件
+每个化合物也会保存一个单独的
 - 计算单点能，禁止优化：
 
 ```bash
