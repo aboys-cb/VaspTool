@@ -1289,7 +1289,10 @@ class BandStructureJob(JobBase):
 class AimdJob(JobBase):
 
     def __init__(self, TEBEG=300, TEEND=300, NSW=3000, **kwargs):
-        folder = f"aimd({TEBEG}-{TEEND}k)@{NSW}"
+        if "ML_LMLFF" in kwargs and kwargs["ML_LMLFF"]:
+            folder = f"aimd-ml({TEBEG}-{TEEND}k)@{NSW}"
+        else:
+            folder = f"aimd({TEBEG}-{TEEND}k)@{NSW}"
         super().__init__(step_type="aimd", TEBEG=TEBEG, TEEND=TEEND, NSW=NSW, folder=folder, **kwargs)
 
     # @property
