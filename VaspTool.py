@@ -13,7 +13,7 @@ from monty.dev import requires
 from monty.serialization import loadfn
 from ruamel.yaml.comments import CommentedMap
 
-__version__ = "1.0.8"
+__version__ = "1.1.0"
 
 os.environ["PMG_DEFAULT_FUNCTIONAL"] = r"PBE_54"
 
@@ -158,7 +158,7 @@ function_base_incar = {
 
     "hse": {
         "base": {
-            "add": {"EDIFF": 1e-04, "EDIFFG": -0.01,
+            "add": {
                     "HFSCREEN": 0.2, "AEXX": 0.25, "LHFCALC": True, "PRECFOCK": "N"
                     },
             "remove": []
@@ -2270,6 +2270,9 @@ def build_argparse():
     group_vasp.add_argument(
         "-soc", "--open_soc", action='store_true', help="是否打开soc", default=False
     )
+    group_vasp.add_argument(
+        "--vdw", choices=list(config.get("VDW", {}).keys()), help="设置vdW 泛函", default=None
+    )
 
     group_vasp.add_argument(
         "--disable_sr", action='store_true', help="是否禁止优化", default=False
@@ -2350,6 +2353,11 @@ if __name__ == '__main__':
         incar_args["ML_LMLFF"] = True
         incar_args["ML_MODE"] = "train"
 
+    if args.vdw:
+        vdw = config["VDW"][args.vdw]
+        for k, v in vdw.items():
+            incar_args[k] = v
+        logging.info(f"设置VDW泛函{args.vdw}参数：{vdw}")
 
     vasp = VaspTool(vasp_path=args.vasp_path,
                     mpirun_path=args.mpirun_path,

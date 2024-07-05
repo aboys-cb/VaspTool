@@ -1,4 +1,4 @@
-Version: 1.0.8
+Version: 1.1.0
 SETTING:
   #PMG_VASP_PSP_DIR 是必须指定的 赝势文件的路径
   PMG_VASP_PSP_DIR : "~/POT_GGA_PAW_PBE_54/"
@@ -22,6 +22,8 @@ SETTING:
 MAGMOM:
 
     Fe: 5
+    Co: 0.6
+    La: 0.6
 
 #U值 给程序传入-u参数 就会开启+u 如果u值出现在下面的配置中 就设置 否则不开启
 
@@ -62,7 +64,7 @@ U:
 
 INCAR :
   SYSTEM : BaseIncar
-  EDIFF : 1e-06 #HSE会自动将成-4 加快计算 如果需要修改 程序162行左右HSE_EDIFF
+  EDIFF: 1e-06
   EDIFFG: -0.01
   ISPIN : 1 #其实这里设置无所谓 会根据磁性原子列表自动判断
   ISMEAR : 0
@@ -162,6 +164,55 @@ KPOINTS:
       default: 1000
     band:
       default: 100
+
+
+VDW:
+  #从pymatgen 复制的 主要是方便修改自定义
+  dftd2:
+    IVDW: 1
+  dftd3:
+    IVDW: 11
+  dftd3-bj:
+    IVDW: 12
+  ts:
+    IVDW: 2
+  ts-hirshfeld:
+    IVDW: 21
+  mbd@rsc:
+    IVDW: 202
+  ddsc:
+    IVDW: 4
+  df:
+    LUSE_VDW: True
+    AGGAC: 0.0
+    GGA: RE
+  optpbe:
+    LUSE_VDW: True
+    AGGAC: 0.0
+    GGA: OR
+  optb88:
+    LUSE_VDW: True
+    AGGAC: 0.0
+    GGA: BO
+    PARAM1: 0.18333333
+    PARAM2: 0.22
+  optb86b:
+    LUSE_VDW: True
+    AGGAC: 0.0
+    GGA: MK
+    PARAM1: 0.1234
+    PARAM2: 1.0
+  df2:
+    LUSE_VDW: True
+    AGGAC: 0.0
+    GGA: ML
+    ZAB_VDW: -1.8867
+  rvv10:
+    LUSE_VDW: True
+    LASPH: True
+    BPARAM: 15.7
+
+
 
 POTCAR:
   PBE54:
