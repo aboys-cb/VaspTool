@@ -5,6 +5,12 @@
 # @email    : 1747193328@qq.com
 """
 等间距抽取多少个结构在xyz文件中
+每隔50抽取1个
+python extract_xyz.py aimd.xyz 50
+
+主动学习的 可以用 100k是标记 在Config_type
+python extract_xyz.py dump.xyz 50 100k
+
 """
 import argparse
 
