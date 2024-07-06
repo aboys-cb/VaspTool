@@ -11,7 +11,7 @@ VASPTool 主要用于计算能带、态密度、介电常数、光学性质等�
 
 - 支持多种泛函：PBE、HSE、SCAN、R2SCAN、MBJ
 - 支持声子谱（有限位移法）[phono]、单点能[scf]、能带态密度[banddos]、能带[band]、态密度[dos]、介电常数[dielectric]、光学[optic]
-  、分子动力学计算[aimd]、功函数[work_function]、bader电荷[bader]
+  、分子动力学计算[aimd]、分子动力学计算[aimd-ml]、功函数[work_function]、bader电荷[bader]
 - 支持作业管理系统提交
 
 ### 社区支持
