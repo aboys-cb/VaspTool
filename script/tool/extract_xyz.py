@@ -24,7 +24,7 @@ def extract(file_path, num, config=None):
 
     extract = atoms[::num]
     if config is not None:
-        for i, atom in tqdm.tqdm(enumerate(extract)):
+        for i, atom in tqdm.tqdm(enumerate(extract), total=len(extract)):
             symbols = str(atom.symbols)
 
             if symbols not in atoms_info.keys():

@@ -1,5 +1,7 @@
 # VASPTool
 
+[Github](https://github.com/aboys-cb/VaspTool) 国内可选择 [Gitee](https://gitee.com/QMaster/VaspTool)
+
 ## 介绍
 
 VASPTool 主要用于计算能带、态密度、介电常数、光学性质等物理性质，支持一条命令自动完成计算。集成了多种泛函，并支持作业管理系统提交。
