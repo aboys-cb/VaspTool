@@ -6,7 +6,7 @@ SETTING:
   vasp_path: vasp_std
   mpirun_path : mpirun
   energy_min : -5 #画图的范围
-  energy_max : 2 #画图的范围
+  energy_max: 5 #画图的范围
   dpi : 300 #图片的dpi
   EOSStep: 0.05
   EOSStepNum: 8
@@ -24,6 +24,7 @@ MAGMOM:
     Fe: 5
     Co: 0.6
     La: 0.6
+    Pb: 0.1
 
 #U值 给程序传入-u参数 就会开启+u 如果u值出现在下面的配置中 就设置 否则不开启
 

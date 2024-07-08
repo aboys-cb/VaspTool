@@ -5,6 +5,7 @@
 # @email    : 1747193328@qq.com
 import os
 from functools import cached_property, partial
+from itertools import product
 
 import matplotlib
 
@@ -50,6 +51,8 @@ from pymatgen.io.vasp.inputs import Incar, Poscar, Kpoints, VaspInput, Potcar, P
 from pymatgen.io.vasp.outputs import Vasprun, BSVasprun, Outcar, Eigenval, Wavecar, Locpot
 
 from pymatgen.io.lobster import Lobsterin, Lobsterout
+from pymatgen.electronic_structure.core import Spin, Orbital
+from pymatgen.electronic_structure.dos import CompleteDos
 
 from pymatgen.electronic_structure.plotter import BSPlotter, DosPlotter, BSDOSPlotter
 from pymatgen.symmetry.bandstructure import HighSymmKpath
@@ -332,6 +335,29 @@ def check_in_out_file(path):
     return all([os.path.exists(os.path.join(path, i)) for i in in_out_file])
 
 
+def array_to_dat(file_path, x_array, *data_array, headers: list = []):
+    x_array = x_array.reshape(1, -1)
+    all_data_array = np.array(data_array)
+    result = None
+
+    with open(file_path, "w", encoding="utf8") as f:
+
+        f.write("# " + "".join(map(lambda x: f"{x:<15}", headers)) + '\n')
+
+        f.write(f"# GroupSize & Groups: {all_data_array.shape[2]}  {all_data_array.shape[1]}"  '\n')
+
+        for i in range(all_data_array.shape[1]):
+            if i % 2 == 0:
+
+                single = np.vstack([x_array, all_data_array[:, i, :]])
+            else:
+                single = np.vstack([np.flip(x_array), np.flip(all_data_array[:, i, :], axis=1)])
+
+            f.write('\n')
+
+            for row in single.T:
+                f.write("".join(map(lambda x: f"{x:<15.8f} " if not isinstance(x, dict) else f"{x} ", row)) + '\n')
+        # np.savetxt(f,single.T, delimiter="    ", fmt='%f',comments="",header=header)
 # 将xyz 获取的
 def write_to_xyz(vaspxml_path, save_path, Config_type, append=True):
     if setting.get("ExportXYZ"):
@@ -474,6 +500,8 @@ def get_vacuum_axis(structure: Structure, vacuum_size=5):
         return 2
     else:
         return None
+
+
 class BaseIncar(Incar):
     PBE_EDIFF = 1e-06
     PBE_EDIFFG = -0.01
@@ -676,7 +704,8 @@ class BaseKpoints:
 class JobBase():
     result_label = []
 
-    def __init__(self, structure, path, job_type, step_type, function, kpoints_type="Gamma", folder=None, KPOINTS=None,
+    def __init__(self, structure: Structure, path, job_type, step_type, function, kpoints_type="Gamma", folder=None,
+                 KPOINTS=None,
                  open_soc=False, dft_u=False, force_coverage=False, mpirun_path="mpirun", vasp_path="vasp_std", cores=1,
                  **kwargs):
         self.test = None
@@ -1112,16 +1141,110 @@ class DosJob(JobBase):
 
         return super().run(**kwargs)
 
+    def write_dos_file(self, path, data, headers):
+        np.savetxt(self.run_dir.joinpath(path), data, delimiter=" ", fmt="%10.6f", comments="",
+                   header=" ".join(headers))
+
+    def export_tdos(self, tdos, dos):
+        verify_path(self.run_dir.joinpath("data"))
+
+        energy = dos.energies - dos.efermi
+
+        self.write_dos_file("data/total-up.dat",
+                            np.vstack([energy, tdos.densities[Spin.up]]).T,
+                            headers=["energy(eV)", "Density"])
+        if Spin.down in tdos.densities:
+            self.write_dos_file("data/total-dw.dat",
+                                np.vstack([energy, -tdos.densities[Spin.down]]).T,
+                                headers=["energy(eV)", "Density"])
+
+        # 先按元素导出所有元素的总的
+        elem_dos = dos.get_element_dos()
+
+        for elem, e_dos in elem_dos.items():
+
+            self.write_dos_file(f"data/total-up-{elem.name}.dat",
+                                np.vstack([energy, e_dos.densities[Spin.up]]).T,
+                                headers=["energy(eV)", "Density"])
+            if Spin.down in e_dos.densities:
+                self.write_dos_file(f"data/total-dw-{elem.name}.dat",
+                                    np.vstack([energy, -e_dos.densities[Spin.down]]).T,
+                                    headers=["energy(eV)", "Density"])
+
+    def export_pdos(self, dos: CompleteDos):
+        verify_path(self.run_dir.joinpath("data/pdos"))
+
+        energy = dos.energies - dos.efermi
+        ispin = self.incar.get("ISPIN") == 2
+        el_dos = {}
+        index_map = {}
+
+        for site, atom_dos in dos.pdos.items():
+            element = site.specie.name
+            if element not in el_dos:
+                index_map[element] = 1
+                el_dos[element] = {Spin.up: np.zeros((energy.shape[0], len(atom_dos)), dtype=np.float64)}
+                if ispin:
+                    el_dos[element][Spin.down] = el_dos[element][Spin.up].copy()
+
+            site_single = {Spin.up: np.zeros_like(el_dos[element][Spin.up])}
+            if ispin:
+                site_single[Spin.down] = site_single[Spin.up].copy()
+
+            for orb, pdos in atom_dos.items():
+                for spin, ppdos in pdos.items():
+                    site_single[spin][:, orb.value] += ppdos
+
+            headers = ["energy(eV)"] + [Orbital(i).name for i in range(len(atom_dos))] + ["sum"]
+            self.write_dos_file(
+                f"data/pdos/site-up-{element}{index_map[element]}.dat",
+                np.hstack(
+                    [energy.reshape(-1, 1), site_single[Spin.up], site_single[Spin.up].sum(axis=1).reshape(-1, 1)]),
+                headers
+            )
+            if ispin:
+                self.write_dos_file(
+                    f"data/pdos/site-dw-{element}{index_map[element]}.dat",
+                    np.hstack([energy.reshape(-1, 1), -site_single[Spin.down],
+                               -site_single[Spin.down].sum(axis=1).reshape(-1, 1)]),
+                    headers
+                )
+
+            el_dos[element][Spin.up] += site_single[Spin.up]
+            if ispin:
+                el_dos[element][Spin.down] += site_single[Spin.down]
+
+            index_map[element] += 1
+
+        for elem, total_dos in el_dos.items():
+            for spin, spin_dos in total_dos.items():
+                headers = ["energy(eV)"] + [Orbital(i).name for i in range(spin_dos.shape[-1])] + ["sum"]
+
+                self.write_dos_file(
+                    f"data/pdos/element-{'up' if spin == Spin.up else 'dw'}-{elem}.dat",
+                    np.hstack([energy.reshape(-1, 1), spin.value * spin_dos,
+                               spin.value * spin_dos.sum(axis=1).reshape(-1, 1)]),
+                    headers
+                )
+
+
+
     def post_processing(self, result=None):
         if result is None:
             result = {}
 
         vasprun = Vasprun(self.run_dir.joinpath("vasprun.xml"), parse_potcar_file=False)
         dos = vasprun.complete_dos
+
         result[f"dos_efermi_{self.function}"] = dos.efermi
         result[f"dos_vbm_{self.function}"] = dos.get_cbm_vbm()[1]
         result[f"dos_cbm_{self.function}"] = dos.get_cbm_vbm()[0]
         result[f"dos_gap_{self.function}"] = dos.get_gap()
+
+        self.export_tdos(vasprun.tdos, dos)
+        self.export_pdos(dos)
+
+
 
         plotter = DosPlotter()
         # 添加各种元素的DOS数据
@@ -1199,6 +1322,77 @@ class BandStructureJob(JobBase):
         coefficients = np.polyfit(distance[left_boundary:right_boundary], energy[left_boundary:right_boundary], 2)
         return 0.5 / coefficients[0]
 
+    def get_projected_data(self, bs):
+        result = {}
+        for spin, v in bs.projections.items():
+            result[spin] = {}
+            for elem in self.structure.composition.elements:
+                result[spin][elem.name] = [[0 for i in range(len(bs.kpoints))] for j in range(bs.nb_bands)]
+            for i, j, k in product(
+                    range(bs.nb_bands),
+                    range(len(bs.kpoints)),
+                    range(len(self.structure)),
+            ):
+                print(v[i, j, :, k].shape)
+                result[spin][self.structure[k].specie.name][i][j] += v[i, j, :, k]
+        return result
+
+    def export_projected_data(self, bs):
+
+        projected_data = self.get_projected_data(bs)
+        spin_map = {Spin.up: "up", Spin.down: "dw"}
+        for spin, data in projected_data.items():
+            bands = bs.bands[spin]
+
+            spin_str = spin_map[spin]
+            for elem, elem_data in data.items():
+                elem_data = np.array(elem_data)
+                _data = [bands - bs.efermi]
+                headers = [u"distance(1/A)", u"energy(eV)"]
+                for i in range(elem_data.shape[-1]):
+                    _data.append(elem_data[:, :, i])
+                    headers.append(f"projected {Orbital(i).name}")
+
+                array_to_dat(self.run_dir.joinpath(f"data/projected-{spin_str}-{elem}.dat"),
+                             np.array(bs.distance), *_data,
+                             headers=headers)
+
+    def export_band_data(self, bs):
+        spin_map = {Spin.up: "up", Spin.down: "dw"}
+        for spin, bands in bs.bands.items():
+            spin_str = spin_map[spin]
+
+            array_to_dat(self.run_dir.joinpath(f"data/band-{spin_str}.dat"), np.array(bs.distance), bands - bs.efermi,
+                         headers=[u"distance(1/A)", u"energy(eV)"])
+
+    def get_effective_mass(self, bs):
+        me = 0
+        mh = 0
+        try:
+            if not bs.is_metal():
+                vbm = bs.get_vbm()
+                cbm = bs.get_cbm()
+
+                spin = list(cbm["band_index"].keys())[0]
+                index = list(cbm["band_index"].values())[0][0]
+
+                me = self.calculate_effective_mass(np.array(bs.distance),
+                                                   bs.bands[spin][index].copy(),
+                                                   cbm["kpoint_index"][0])
+
+                spin = list(vbm["band_index"].keys())[0]
+                index = list(vbm["band_index"].values())[0][0]
+
+                mh = self.calculate_effective_mass(np.array(bs.distance),
+                                                   bs.bands[spin][index].copy(),
+                                                   vbm["kpoint_index"][0]
+                                                   )
+
+        except:
+            pass
+        return me, mh
+
+
     def post_processing(self, result=None):
         if result is None:
             result = {}
@@ -1213,11 +1407,13 @@ class BandStructureJob(JobBase):
         else:
             line_mode = False
 
+
         vasprun = BSVasprun(self.run_dir.joinpath("vasprun.xml").as_posix(),
                             parse_projected_eigen=setting.get("ExportProjection", True)
                             )
 
         bs = vasprun.get_band_structure(line_mode=line_mode, force_hybrid_mode=force_hybrid_mode)
+
 
         band_gap = bs.get_band_gap()
         vbm = bs.get_vbm()
@@ -1226,53 +1422,22 @@ class BandStructureJob(JobBase):
         result[f"band_gap_{self.function}"] = band_gap['energy']
         result[f"vbm_{self.function}"] = vbm["energy"]
         result[f"cbm_{self.function}"] = cbm["energy"]
-        result[f"efermi_{self.function}"] = vasprun.efermi
-        try:
-            if not bs.is_metal():
-                spin = list(cbm["band_index"].keys())[0]
-                index = list(cbm["band_index"].values())[0][0]
+        result[f"efermi_{self.function}"] = bs.efermi
+        result[f"m_e_{self.function}"], result[f"m_h_{self.function}"] = self.get_effective_mass(bs)
 
-                result[f"m_e_{self.function}"] = self.calculate_effective_mass(np.array(bs.distance),
-                                                                               bs.bands[spin][index],
-                                                                               cbm["kpoint_index"][0]
-                                                                               )
 
-                spin = list(vbm["band_index"].keys())[0]
-                index = list(vbm["band_index"].values())[0][0]
 
-                result[f"m_h_{self.function}"] = self.calculate_effective_mass(np.array(bs.distance),
-                                                                               bs.bands[spin][index],
-                                                                               vbm["kpoint_index"][0]
-                                                                               )
-
-        except:
-            pass
         if not line_mode:
             return result
         if not self.run_dir.joinpath("data").exists():
             self.run_dir.joinpath("data").mkdir()
 
-        for spin, bands in bs.bands.items():
-            verify_path(self.run_dir.joinpath(f"data/spin{spin}"))
-
-            np.savetxt(self.run_dir.joinpath(f"data/spin{spin}/band.csv"),
-                       np.vstack((np.array(bs.distance), bands - vasprun.efermi)).T, delimiter=",", fmt='%f')
-        # data=bs.get_projections_on_elements_and_orbitals({'Pb':['px','py',"pz"]})
-        # print(data)
-        # bs.get_projection_on_elements()
-        # if bs.projections:
-        #     #[band_index, kpoint_index, orbital_index,ion_index]
-        #     for spin, v in bs.projections.items():
-        #         print(v.shape)
-        #         for ion_index in range(v.shape[3]):
-        #             data=v[:,:,:,ion_index]
-        #             print(data.shape)
-        # np.save()
-        # np.savetxt(self.run_dir.joinpath(f"data/spin{spin}/band1.dat"),
-        #            v, delimiter=",", fmt='%f')
-
+        self.export_band_data(bs)
+        if bs.projections:
+            self.export_projected_data(bs)
         plotter = BSPlotter(bs)
         plot = plotter.get_plot(ylim=(self.vb_energy, self.cb_energy), vbm_cbm_marker=True)
+        plt.savefig(self.run_dir.joinpath(f"band.png"), dpi=self.dpi)
 
         with open(self.run_dir.joinpath(f"data/band_lables.txt"), "w", encoding="utf8") as f:
             f.write("distance\tlable\n")
@@ -1281,7 +1446,6 @@ class BandStructureJob(JobBase):
             for i in range(len(label)):
                 f.write(f"{round(distance[i], 6)}\t{label[i]}\n")
 
-        plt.savefig(self.run_dir.joinpath(f"band.png"), dpi=self.dpi)
 
         return result
 
@@ -1745,7 +1909,6 @@ class VaspTool:
 
         bands = bs_vasprun.get_band_structure(line_mode=True)
 
-        # from pymatgen.electronic_structure.plotter import DosPlotter
         plotter = BSDOSPlotter(bs_projection="elements", dos_projection="orbitals",
                                vb_energy_range=-self.vb_energy, cb_energy_range=self.cb_energy, fixed_cb_energy=True,
                                fig_size=(8, 6))
