@@ -93,7 +93,7 @@ logging.basicConfig(
     stream=sys.stdout  # 指定输出流为sys.stdout
 
 )
-
+Structure.to_conventional()
 PotcarSingle.functional_dir["PBE_54"] = ""
 FUNCTION_TYPE = ["pbe", "pbesol", "hse", "scan", "r2scan", "mbj", "gw", "bse"]
 KPOINTS_TYPE = Union[int, tuple, list]
@@ -1233,7 +1233,7 @@ class DosJob(JobBase):
         if result is None:
             result = {}
 
-        vasprun = Vasprun(self.run_dir.joinpath("vasprun.xml"), parse_potcar_file=False)
+        vasprun = Vasprun(self.run_dir.joinpath("vasprun.xml"), parse_potcar_file=False )
         dos = vasprun.complete_dos
 
         result[f"dos_efermi_{self.function}"] = dos.efermi
@@ -1242,7 +1242,8 @@ class DosJob(JobBase):
         result[f"dos_gap_{self.function}"] = dos.get_gap()
 
         self.export_tdos(vasprun.tdos, dos)
-        self.export_pdos(dos)
+        if  setting.get("ExportProjection", True):
+            self.export_pdos(dos)
 
 
 
@@ -1322,41 +1323,49 @@ class BandStructureJob(JobBase):
         coefficients = np.polyfit(distance[left_boundary:right_boundary], energy[left_boundary:right_boundary], 2)
         return 0.5 / coefficients[0]
 
-    def get_projected_data(self, bs):
-        result = {}
-        for spin, v in bs.projections.items():
-            result[spin] = {}
+
+    def write_projected_dat(self,filename,distance,energy,projected):
+
+        _data = [energy]
+        headers = [u"distance(1/A)", u"energy(eV)"]
+        for i in range(projected.shape[-1]):
+            _data.append(projected[:, :, i])
+            headers.append(f"projected {Orbital(i).name}")
+        headers.append("sum")
+
+        _data.append(projected.sum(axis=2))
+        array_to_dat(self.run_dir.joinpath(filename),
+                     np.array(distance), *_data,
+                     headers=headers)
+
+    def export_projected_data(self,bs):
+        verify_path(self.run_dir.joinpath("data/projected"))
+        for spin, spin_projection in bs.projections.items():
+            element_result = {}
+            element_index={}
             for elem in self.structure.composition.elements:
-                result[spin][elem.name] = [[0 for i in range(len(bs.kpoints))] for j in range(bs.nb_bands)]
-            for i, j, k in product(
-                    range(bs.nb_bands),
-                    range(len(bs.kpoints)),
-                    range(len(self.structure)),
-            ):
-                print(v[i, j, :, k].shape)
-                result[spin][self.structure[k].specie.name][i][j] += v[i, j, :, k]
-        return result
+                element_index[elem.name]=1
+                element_result[elem.name] = np.zeros((spin_projection.shape[0], spin_projection.shape[1], spin_projection.shape[2]), dtype=np.float64)
+            for site_index in range(len(self.structure)):
+                site=self.structure[site_index].specie.name
+                site_array=spin_projection[:,:, :, site_index]
 
-    def export_projected_data(self, bs):
+                element_result[site]+=site_array
+                self.write_projected_dat(
+                    f"data/projected/site-{'up' if spin == Spin.up else 'dw'}-{site}{element_index[site]}.dat",
+                    bs.distance,
+                    bs.bands[spin]-bs.efermi,
+                    site_array
+                )
+                element_index[site]+=1
+            for elem ,value in element_result.items():
 
-        projected_data = self.get_projected_data(bs)
-        spin_map = {Spin.up: "up", Spin.down: "dw"}
-        for spin, data in projected_data.items():
-            bands = bs.bands[spin]
-
-            spin_str = spin_map[spin]
-            for elem, elem_data in data.items():
-                elem_data = np.array(elem_data)
-                _data = [bands - bs.efermi]
-                headers = [u"distance(1/A)", u"energy(eV)"]
-                for i in range(elem_data.shape[-1]):
-                    _data.append(elem_data[:, :, i])
-                    headers.append(f"projected {Orbital(i).name}")
-
-                array_to_dat(self.run_dir.joinpath(f"data/projected-{spin_str}-{elem}.dat"),
-                             np.array(bs.distance), *_data,
-                             headers=headers)
-
+                self.write_projected_dat(
+                    f"data/projected/element-{'up' if spin == Spin.up else 'dw'}-{elem}.dat",
+                    bs.distance,
+                    bs.bands[spin] - bs.efermi,
+                    value
+                )
     def export_band_data(self, bs):
         spin_map = {Spin.up: "up", Spin.down: "dw"}
         for spin, bands in bs.bands.items():

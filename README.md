@@ -44,7 +44,12 @@ conda create -n mysci python=3.10
 ```bash
 pip install pymatgen seekpath
 ```
+如果运行出现`ImportError`.需要降低numpy sci的版本，
 
+```bash
+pip install scipy==1.13.1
+pip install numpy==1.26.1
+```
 如果需要处理 XYZ 文件，还需安装 ASE：
 
 ```bash
