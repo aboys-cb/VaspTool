@@ -5,7 +5,6 @@
 # @email    : 1747193328@qq.com
 import os
 from functools import cached_property, partial
-from itertools import product
 
 import matplotlib
 
@@ -14,7 +13,7 @@ from monty.dev import requires
 from monty.serialization import loadfn
 from ruamel.yaml.comments import CommentedMap
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 
 os.environ["PMG_DEFAULT_FUNCTIONAL"] = r"PBE_54"
 
@@ -93,7 +92,7 @@ logging.basicConfig(
     stream=sys.stdout  # 指定输出流为sys.stdout
 
 )
-Structure.to_conventional()
+
 PotcarSingle.functional_dir["PBE_54"] = ""
 FUNCTION_TYPE = ["pbe", "pbesol", "hse", "scan", "r2scan", "mbj", "gw", "bse"]
 KPOINTS_TYPE = Union[int, tuple, list]
