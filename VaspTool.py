@@ -13,7 +13,7 @@ from monty.dev import requires
 from monty.serialization import loadfn
 from ruamel.yaml.comments import CommentedMap
 
-__version__ = "1.1.1"
+__version__ = "1.1.2"
 
 os.environ["PMG_DEFAULT_FUNCTIONAL"] = r"PBE_54"
 
@@ -46,6 +46,7 @@ from monty.io import zopen
 from monty.json import MontyEncoder, MontyDecoder
 from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 from pymatgen.core import Structure, Lattice
+
 from pymatgen.io.vasp.inputs import Incar, Poscar, Kpoints, VaspInput, Potcar, PotcarSingle
 from pymatgen.io.vasp.outputs import Vasprun, BSVasprun, Outcar, Eigenval, Wavecar, Locpot
 
@@ -106,7 +107,7 @@ potcar_gw_config = config.get("POTCAR", {}).get("GW")
 step_base_incar = {
     "sr": {
         "add": {
-            "LWAVE": False, "LCHARG": False, "NSW": 100, "ISIF": 3, "IBRION": 2, "ALGO": "Fast"
+            "LWAVE": False, "LCHARG": False, "NSW": 100, "ISIF": 3, "IBRION": 2, "ALGO": "Normal"
         },
         "remove": []
     },
@@ -140,6 +141,15 @@ step_base_incar = {
         },
         "remove": []
     },
+    "elastic": {
+        "add": {
+            "ISTART": 1, "ISIF": 3, "IBRION": 6, "LWAVE": False, "LCHARG": False,
+            "PREC": "Accurate", "ADDGRID": True, "LREAL": False, "NSW": 1,
+            "NFREE": 2
+        },
+        "remove": ["NPAR", "NCORE"]
+    },
+
     "dielectric": {
         "add": {
             "ISTART": 1, "SIGMA": 0.05, "LEPSILON": True, "LPEAD": True, "IBRION": 8, "LWAVE": False, "LCHARG": False
@@ -154,6 +164,7 @@ step_base_incar = {
         },
         "remove": []
     },
+
 }
 # 这个都是非pbe的一些补充
 function_base_incar = {
@@ -456,9 +467,13 @@ def read_dataframe_from_file(file_path: Path, duplicated=True, **kwargs) -> pd.D
             raise ValueError(f"仅支持后缀为POSCAR、cif、vasp、json、xyz类型的文件")
 
     if duplicated:
+        df.reset_index(drop=True, inplace=True)
+
+
         duplicated = df[df.duplicated("system", False)]
 
         group = duplicated.groupby("system")
+
         df["group_number"] = group.cumcount()
         df["group_number"] = df["group_number"].fillna(-1)
         df["group_number"] = df["group_number"].astype(int)
@@ -490,12 +505,13 @@ def get_vacuum_axis(structure: Structure, vacuum_size=5):
     """
     coords = np.array([site.coords for site in structure.sites])
     maxcoords = np.max(coords, axis=0)
+    mincoords = np.min(coords, axis=0)
 
-    if structure.lattice.a - maxcoords[0] > vacuum_size:
+    if (structure.lattice.a - maxcoords[0]) + (mincoords[0]) > vacuum_size:
         return 0
-    elif structure.lattice.b - maxcoords[1] > vacuum_size:
+    elif (structure.lattice.b - maxcoords[1]) + (mincoords[1]) > vacuum_size:
         return 1
-    elif structure.lattice.c - maxcoords[2] > vacuum_size:
+    elif (structure.lattice.c - maxcoords[2]) + (mincoords[2]) > vacuum_size:
         return 2
     else:
         return None
@@ -575,6 +591,19 @@ class BaseIncar(Incar):
             self["ISPIN"] = 2
             self["MAGMOM"] = " ".join(magmom)
 
+    def auto_encut(self, structure: Structure, pseudopotential="pbe54"):
+        max_encut = 0
+
+        for symbol in get_pot_symbols(structure.species, pseudopotential):
+            single = PotcarSingle.from_symbol_and_functional(symbol, functional="PBE_54")
+
+            if max_encut < single.enmax:
+                max_encut = single.enmax
+        encut = int(setting.get("ENCUTScale") * max_encut)
+        self["ENCUT"] = encut
+        logging.info(f"截断能根据{setting.get('ENCUTScale')}倍取值：{encut}")
+
+
 
 class BaseKpoints:
     _instance = None
@@ -615,7 +644,9 @@ class BaseKpoints:
                 vacuum = get_vacuum_axis(structure, 5)
                 if vacuum is not None:
                     kps[vacuum] = 1
+
                 kp = Kpoints.automatic_density_by_lengths(structure, kps).kpts[0]
+        logging.info(f"网格K点：{kp}")
 
         if self.kpoints_type.upper().startswith("M"):
             return Kpoints.monkhorst_automatic(kp)
@@ -766,6 +797,11 @@ class JobBase():
         formula = self.structure.composition.to_pretty_string()
         incar["SYSTEM"] = formula + "-" + self.function + "-" + self.step_type
         incar.has_magnetic(self.structure)
+
+        if setting.get("ENCUTScale"):
+            incar.auto_encut(self.structure)
+
+
         incar.update(self.incar_kwargs)
         if self.open_soc:
             incar["LSORBIT"] = True
@@ -1467,12 +1503,7 @@ class AimdJob(JobBase):
             folder = f"aimd({TEBEG}-{TEEND}k)@{NSW}"
         super().__init__(step_type="aimd", TEBEG=TEBEG, TEEND=TEEND, NSW=NSW, folder=folder, **kwargs)
 
-    # @property
-    # def incar(self):
-    #     incar=super().incar
 
-    #
-    #     return incar
 
     def run(self, **kwargs):
         if self.check_cover():
@@ -1575,6 +1606,35 @@ class StaticDielectricJob(JobBase):
 
         return result
 
+
+class ElasticJob(JobBase):
+
+    def __init__(self, **kwargs):
+        super().__init__(job_type="elastic", step_type="elastic", folder="elastic", **kwargs)
+
+    # @cached_property
+    # def incar(self):
+    #     incar =super().incar
+    #
+    #
+    #
+    #     return incar
+    def run(self, **kwargs):
+        if self.check_cover():
+            return self
+        # cp_file(self.path.joinpath(f"{self.function}/scf/WAVECAR"), self.run_dir)
+        # cp_file(self.path.joinpath(f"{self.function}/scf/CHGCAR"), self.run_dir)
+
+        return super().run(**kwargs)
+
+    def post_processing(self, result=None):
+        if result is None:
+            result = {}
+        outcar = Outcar(self.run_dir.joinpath("OUTCAR").as_posix())
+        outcar.read_elastic_tensor()
+        elastic_tensor = outcar.data["elastic_tensor"]
+        result["elastic_tensor"] = elastic_tensor
+        return result
 
 class OpticJob(JobBase):
     result_label = ["dielectric_real", "dielectric_imag",
@@ -2131,6 +2191,26 @@ class VaspTool:
         )
         return structure_info
 
+    def count_elastic(self, structure_info, path: Path = "./"):
+
+        self.structure: Structure = structure_info["structure"]
+        if not self.disable_relaxation:
+            job = StructureRelaxationJob(structure=self.structure, path=path,
+                                         job_type="elastic", function="pbe",
+                                         **self.job_args, **self.incar_args).run()
+
+            self.structure = job.final_structure
+
+        elastic_job = ElasticJob(
+            structure=self.structure, path=path,
+            function="pbe",
+            **self.job_args, **self.incar_args
+        )
+        elastic_job.run(remove_wavecar=True)
+        elastic_job.post_processing(structure_info
+
+                                    )
+        return structure_info
     def count_phono(self, structure_info, path: Path = "./"):
         self.structure: Structure = structure_info["structure"]
         pass
@@ -2349,6 +2429,7 @@ class VaspTool:
 
             "optic": self.count_optic,
             "dielectric": self.count_dielectric,
+            "elastic": self.count_elastic,
             "sr": self.cb_sr,
             "cohp": self.count_cohp,
             "test": self.test,
@@ -2510,7 +2591,7 @@ def parse_input_incar_value(input_values: list | None):
 if __name__ == '__main__':
     logging.info(f"VaspTool-{__version__}")
     calculate_type = ["band", "dos", "banddos", "optic", "cohp",
-                      "dielectric", "aimd", "aimd-ml", "phono",
+                      "dielectric", "aimd", "aimd-ml", "phono", "elastic",
                       "scf", "work_function", "eos",
                       "bader"
                       ]

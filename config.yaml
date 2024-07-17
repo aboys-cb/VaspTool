@@ -1,4 +1,4 @@
-Version: 1.1.1
+Version: 1.1.2
 SETTING:
   #PMG_VASP_PSP_DIR 是必须指定的 赝势文件的路径
   PMG_VASP_PSP_DIR : "~/POT_GGA_PAW_PBE_54/"
@@ -12,7 +12,7 @@ SETTING:
   EOSStepNum: 8
   EOSModel: murnaghan
   #EOSModel 选择其中一个   murnaghan birch birch_murnaghan pourier_tarantola vinet deltafactor numerical_eos
-
+  ENCUTScale: 1.5
   ExportProjection: True
   ExportXYZ: True #在单点能以及分子动力学运行后 自动导出xyz文件
   UseInputFileName: False
@@ -72,7 +72,7 @@ INCAR :
   SIGMA : 0.05
   ISTART : 0 #在band 或者dos这种 程序会更改为1  初始文件主要控制优化以及自洽的时候
   NELM : 100
-  ENCUT : 500
+  ENCUT: 700
   ALGO : Normal #在算性质的时候 会更改 比如HSE的时候是Damped
   PREC : Normal
   GGA : PE #pbesol会更改为PS
@@ -91,46 +91,30 @@ KPOINTS:
       default : 3000
       pbe : 3000
       hse : 3000
-      scan : 3000
-      r2scan : 3000
-      mbj : 3000
-      diag : 3000
     band:
       default: 10
       pbe: 20
       hse: 10 #杂化泛函的10 只有再没有pbe的情况下才生效
-      scan: 10 #不然会取pbe的vasp生成的点自动拼接  更准确一些
-      r2scan: 10
-      mbj: 10
+      #不然会取pbe的vasp生成的点自动拼接  更准确一些
+
       gw: 3000
     dos:
       default: 3000
-      pbe: 3000
-      hse: 3000
-      scan: 3000
-      r2scan: 3000
-      mbj: 3000
+
   optic_dielectric:
     sr:
       default : 1000
     scf:
       default : 3000
-
-      pbe: 3000
       pbesol : 6000
-      hse: 3000
+
     dielectric:
       default : 3000
 
-      pbe: 3000
-      pbesol: 3000
-      hse: 3000
     optic:
       default : 3000
-
-      pbe: 3000
       pbesol: 6000
-      hse: 3000
+
   cohp :
     scf:
       default : 800
@@ -144,6 +128,11 @@ KPOINTS:
       default: [ 1,1,1 ]
     scf:
       default: 20
+  elastic:
+    sr:
+      default: 30
+    elastic:
+      default: 45
   work_function:
     sr:
       default: 30
@@ -153,7 +142,7 @@ KPOINTS:
     sr:
       default: [ 1,1,1 ]
     scf:
-      default: [ 20,20,1 ]
+      default: 25
   phono:
     sr:
       default: 1000
