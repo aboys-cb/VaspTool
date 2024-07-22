@@ -4,42 +4,13 @@
 # @Author  : 兵
 # @email    : 1747193328@qq.com
 import logging
-import os
 import sys
 from functools import cached_property, partial
 
 import matplotlib
 
 matplotlib.use('Agg')
-from monty.dev import requires
-from monty.serialization import loadfn
 from ruamel.yaml.comments import CommentedMap
-from pathlib import Path
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    stream=sys.stdout  # 指定输出流为sys.stdout
-
-)
-__version__ = "1.1.3"
-
-os.environ["PMG_DEFAULT_FUNCTIONAL"] = r"PBE_54"
-
-if os.path.exists("./config.yaml"):
-    conf_path = "./config.yaml"
-elif Path(__file__).with_name("config.yaml").exists():
-    conf_path = Path(__file__).with_name("config.yaml").as_posix()
-else:
-    logging.error("在运行路径或者VaspTool.py路径下必须要有一个config.yaml!")
-    exit()
-
-config = loadfn(conf_path)
-config: CommentedMap
-
-os.environ["PMG_VASP_PSP_DIR"] = os.path.expanduser(os.path.expandvars(config["SETTING"]["PMG_VASP_PSP_DIR"]))
-
 import abc
 import argparse
 import glob
@@ -51,17 +22,18 @@ import numpy as np
 import json
 import traceback
 import pandas as pd
-from monty.os import cd
 import datetime
 import os
 import subprocess
 from typing import *
-
 from tqdm import tqdm
+from monty.os import cd
+from monty.dev import requires
 from monty.io import zopen
 from monty.json import MontyEncoder, MontyDecoder
+from monty.serialization import loadfn
 from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
-from pymatgen.core import Structure, Lattice
+from pymatgen.core import Structure, Lattice, SETTINGS
 
 from pymatgen.io.vasp.inputs import Incar, Poscar, Kpoints, VaspInput, Potcar, PotcarSingle
 from pymatgen.io.vasp.outputs import Vasprun, BSVasprun, Outcar, Eigenval, Wavecar, Locpot
@@ -98,6 +70,31 @@ except:
 
 
 from matplotlib import pyplot as plt
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    stream=sys.stdout  # 指定输出流为sys.stdout
+
+)
+__version__ = "1.1.3"
+logging.info(f"VaspTool-{__version__}")
+
+if os.path.exists("./config.yaml"):
+    conf_path = "./config.yaml"
+elif Path(__file__).with_name("config.yaml").exists():
+    conf_path = Path(__file__).with_name("config.yaml").as_posix()
+else:
+    logging.error("在运行路径或者VaspTool.py路径下必须要有一个config.yaml!")
+    exit()
+logging.info(f"使用配置文件：{conf_path}")
+
+config = loadfn(conf_path)
+config: CommentedMap
+SETTINGS["PMG_DEFAULT_FUNCTIONAL"] = r"PBE_54"
+
+SETTINGS["PMG_VASP_PSP_DIR"] = os.path.expanduser(os.path.expandvars(config["SETTING"]["PMG_VASP_PSP_DIR"]))
 
 plt.rc('font', family='Times New Roman')
 
@@ -611,7 +608,7 @@ class BaseIncar(Incar):
                 max_encut = single.enmax
         encut = int(setting.get("ENCUTScale") * max_encut)
         self["ENCUT"] = encut
-        logging.info(f"截断能根据{setting.get('ENCUTScale')}倍取值：{encut}")
+        logging.info(f"\t截断能根据{setting.get('ENCUTScale')}倍取值：{encut}")
 
 
 
@@ -656,7 +653,7 @@ class BaseKpoints:
                     kps[vacuum] = 1
 
                 kp = Kpoints.automatic_density_by_lengths(structure, kps).kpts[0]
-        logging.info(f"网格K点：{kp}")
+        logging.info(f"\t网格K点：{kp}")
 
         if self.kpoints_type.upper().startswith("M"):
             return Kpoints.monkhorst_automatic(kp)
@@ -886,7 +883,7 @@ class JobBase():
             if all(hash_table):
                 try:
                     if Outcar(os.path.join(self.run_dir, "OUTCAR")).run_stats.get("User time (sec)"):
-                        logging.info("\t已有缓存，如果覆盖运行，设置force_coverage")
+                        logging.info("\t已有缓存，如果覆盖运行，设置--force_coverage 或者 -f ")
 
                         return True
                 except:
@@ -1954,7 +1951,7 @@ class VaspTool:
 
         logging.info("计算泛函为：" + "、".join(self.functions))
         logging.info(f"mpirun路径：{self.mpirun_path}")
-        logging.info(f"VASP路径：{self.vasp_path}" + "开启soc后会自动切换到同目录下的ncl版本")
+        logging.info(f"VASP路径：{self.vasp_path}" + "\t开启soc后会自动切换到同目录下的ncl版本")
 
     def set_plot_setting(self, cbm: int, vbm: int, dpi: int):
         self.vb_energy = vbm
@@ -2599,7 +2596,6 @@ def parse_input_incar_value(input_values: list | None):
 
 
 if __name__ == '__main__':
-    logging.info(f"VaspTool-{__version__}")
     calculate_type = ["band", "dos", "banddos", "optic", "cohp",
                       "dielectric", "aimd", "aimd-ml", "phono", "elastic",
                       "scf", "work_function", "eos",
@@ -2607,6 +2603,7 @@ if __name__ == '__main__':
                       ]
     parser = build_argparse()
     args = parser.parse_args()
+    logging.info(f"任务使用核数：{args.core}")
 
     if not os.path.exists("./result"):
         os.mkdir("./result")
