@@ -70,6 +70,17 @@ conda install -c conda-forge phonopy
 - 设置 `PMG_VASP_PSP_DIR` 为赝势文件路径。
 - 如果 vasp_std 不在环境变量中，可在 config.yaml 修改 vasp_path 或通过命令行指定路径。
 
+### 定义命令（可选的便捷使用方式）
+
+如果不想每次都复制两个文件。可以通过以下步骤设置命令。
+
+- 在自己路径下新建一个文件夹比如`~/vasptool`
+- 把两个文件上传上去
+- 在`~/.bashrc` 加入`alias VaspTool="python ~/opt/vasptool/VaspTool.py "`
+- 运行`source ~/.bashrc` 命令即可生效
+- 在计算目录使用VaspTool 即可。比如`VaspTool band Si2.cif`
+- 如果想临时修改config.yaml。只需要将config.yaml修改后放在计算目录即可。会优先使用计算目录的配置文件。
+- 只有计算目录没有配置文件，才会使用`~/vasptool`下的config.yaml.
 ## 使用说明
 
 查看帮助信息：
