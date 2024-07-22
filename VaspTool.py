@@ -3,7 +3,9 @@
 # @Time    : 2024/5/9 22:40
 # @Author  : 兵
 # @email    : 1747193328@qq.com
+import logging
 import os
+import sys
 from functools import cached_property, partial
 
 import matplotlib
@@ -12,12 +14,28 @@ matplotlib.use('Agg')
 from monty.dev import requires
 from monty.serialization import loadfn
 from ruamel.yaml.comments import CommentedMap
+from pathlib import Path
 
-__version__ = "1.1.2"
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    stream=sys.stdout  # 指定输出流为sys.stdout
+
+)
+__version__ = "1.1.3"
 
 os.environ["PMG_DEFAULT_FUNCTIONAL"] = r"PBE_54"
 
-config = loadfn("./config.yaml")
+if os.path.exists("./config.yaml"):
+    conf_path = "./config.yaml"
+elif Path(__file__).with_name("config.yaml").exists():
+    conf_path = Path(__file__).with_name("config.yaml").as_posix()
+else:
+    logging.error("在运行路径或者VaspTool.py路径下必须要有一个config.yaml!")
+    exit()
+
+config = loadfn(conf_path)
 config: CommentedMap
 
 os.environ["PMG_VASP_PSP_DIR"] = os.path.expanduser(os.path.expandvars(config["SETTING"]["PMG_VASP_PSP_DIR"]))
@@ -29,10 +47,8 @@ import re
 import shutil
 import warnings
 from pathlib import Path
-import logging
 import numpy as np
 import json
-import sys
 import traceback
 import pandas as pd
 from monty.os import cd
@@ -86,13 +102,7 @@ from matplotlib import pyplot as plt
 plt.rc('font', family='Times New Roman')
 
 warnings.filterwarnings("ignore", module="pymatgen")
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    stream=sys.stdout  # 指定输出流为sys.stdout
 
-)
 
 PotcarSingle.functional_dir["PBE_54"] = ""
 FUNCTION_TYPE = ["pbe", "pbesol", "hse", "scan", "r2scan", "mbj", "gw", "bse"]
@@ -143,7 +153,7 @@ step_base_incar = {
     },
     "elastic": {
         "add": {
-            "ISTART": 1, "ISIF": 3, "IBRION": 6, "LWAVE": False, "LCHARG": False,
+            "ISTART": 0, "ISIF": 3, "IBRION": 6, "LWAVE": False, "LCHARG": False,
             "PREC": "Accurate", "ADDGRID": True, "LREAL": False, "NSW": 1,
             "NFREE": 2
         },

@@ -237,7 +237,7 @@ def auto_learn():
     :return:
     """
     # 定义迭代时间 单位ps
-    times = [10000]
+    times = [500]
     temperatures = range(50, 1000, 50)
     trainxyz = ase_read("train.xyz", ":", format="extxyz")
     for epoch, run_time in enumerate(times):
@@ -253,11 +253,12 @@ def auto_learn():
             # 筛选出结构
             for md_path in md_paths:
 
-                selected = select_structures(trainxyz, md_path.joinpath("dump.xyz"), max_selected=20)
+                selected = select_structures(trainxyz + new_atoms, md_path.joinpath("dump.xyz"), max_selected=20)
                 logging.info(f"得到{len(selected)}个结构")
                 for i, atom in enumerate(selected):
                     atom.info["Config_type"] = f"epoch-{epoch + 1}-{run_time}ps-{temperature}k-{i + 1}"
                 new_atoms.extend(selected)
+
         logging.info(f"本次主动学习新增了{len(new_atoms)}个结构。")
 
         ase_write(root_path.joinpath(f"result/learn-epoch-{epoch}-{run_time}ps.xyz"), new_atoms, format="extxyz")
@@ -276,7 +277,7 @@ def build_argparse():
         可以批量md和主动学习 """,
                                      formatter_class=argparse.RawTextHelpFormatter)
 
-    parser.add_subparsers()
+    # parser.add_subparsers()
 
     parser.add_argument(
         "job_type", choices=["prediction", "md", "learn"], help=" "
