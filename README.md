@@ -76,7 +76,7 @@ conda install -c conda-forge phonopy
 
 - 在自己路径下新建一个文件夹比如`~/vasptool`
 - 把两个文件上传上去
-- 在`~/.bashrc` 加入`alias VaspTool="python ~/opt/vasptool/VaspTool.py "`
+- 在`~/.bashrc` 加入`alias VaspTool="python -u ~/opt/vasptool/VaspTool.py "`
 - 运行`source ~/.bashrc` 命令即可生效
 - 在计算目录使用VaspTool 即可。比如`VaspTool band Si2.cif`
 - 如果想临时修改config.yaml。只需要将config.yaml修改后放在计算目录即可。会优先使用计算目录的配置文件。

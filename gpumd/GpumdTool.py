@@ -183,7 +183,7 @@ def molecular_dynamics(path: Path, temperature, run_time):
               ('run', 1000 * run_time)]
 
     write_runfile(md_path.joinpath("run.in"), run_in)
-    # cp_file(root_path.joinpath("run.in"), md_path.joinpath("run.in"))
+
     cp_file(root_path.joinpath("nep.txt"), md_path.joinpath("nep.txt"))
     atoms.write(md_path.joinpath("model.xyz"), format="extxyz")
     run("gpumd", md_path)
@@ -230,40 +230,39 @@ def select_structures(train, new: Path, max_selected=20):
     return [new_atoms[i - train_des.shape[0]] for i in selected_i]
 
 
-def auto_learn():
+def auto_learn(path, run_time, temperatures, max_selected):
     """
     主动学习迭代
     首先要有一个nep.txt   nep.in train.xyz
     :return:
     """
     # 定义迭代时间 单位ps
-    times = [500]
-    temperatures = range(50, 1000, 50)
+
     trainxyz = ase_read("train.xyz", ":", format="extxyz")
-    for epoch, run_time in enumerate(times):
-        logging.info(f"开始第{epoch + 1}次主动学习，采样时长：{run_time} ps。")
-        # 存放每次epoch 新增的训练集
-        new_atoms = []
-        # 进行gpumd采样
-        for temperature in temperatures:
-            # 对每个温度进行采样
-            logging.info(f"GPUMD采样中，温度：{temperature}k。时长：{run_time}ps")
+    # for epoch, run_time in enumerate(times):
+    logging.info(f"开始第次主动学习，采样时长：{run_time} ps。")
+    # 存放每次epoch 新增的训练集
+    new_atoms = []
+    # 进行gpumd采样
+    for temperature in temperatures:
+        # 对每个温度进行采样
+        logging.info(f"GPUMD采样中，温度：{temperature}k。时长：{run_time}ps")
 
-            md_paths = molecular_dynamics("./s/", temperature=temperature, run_time=run_time)
-            # 筛选出结构
-            for md_path in md_paths:
+        md_paths = molecular_dynamics(path, temperature=temperature, run_time=run_time)
+        # 筛选出结构
+        for md_path in md_paths:
 
-                selected = select_structures(trainxyz + new_atoms, md_path.joinpath("dump.xyz"), max_selected=20)
-                logging.info(f"得到{len(selected)}个结构")
-                for i, atom in enumerate(selected):
-                    atom.info["Config_type"] = f"epoch-{epoch + 1}-{run_time}ps-{temperature}k-{i + 1}"
-                new_atoms.extend(selected)
+            selected = select_structures(trainxyz + new_atoms, md_path.joinpath("dump.xyz"), max_selected=max_selected)
+            logging.info(f"得到{len(selected)}个结构")
+            for i, atom in enumerate(selected):
+                atom.info["Config_type"] = f"epoch-{run_time}ps-{temperature}k-{i + 1}"
+            new_atoms.extend(selected)
 
-        logging.info(f"本次主动学习新增了{len(new_atoms)}个结构。")
+    logging.info(f"本次主动学习新增了{len(new_atoms)}个结构。")
 
-        ase_write(root_path.joinpath(f"result/learn-epoch-{epoch}-{run_time}ps.xyz"), new_atoms, format="extxyz")
-        break
-        #然后nep训练
+    ase_write(root_path.joinpath(f"result/learn-epoch-{run_time}ps.xyz"), new_atoms, format="extxyz")
+
+    # 然后nep训练
 
 
 
@@ -277,14 +276,18 @@ def build_argparse():
         可以批量md和主动学习 """,
                                      formatter_class=argparse.RawTextHelpFormatter)
 
-    # parser.add_subparsers()
-
     parser.add_argument(
-        "job_type", choices=["prediction", "md", "learn"], help=" "
+        "job_type", choices=["prediction", "md", "learn"], help="任务类型"
     )
     parser.add_argument(
         "path", type=Path, help="要计算的xyz路径，或者要批量计算的文件夹。"
     )
+    parser.add_argument("--time", "-t", type=int, help="分子动力学的时间，单位ps。", default=10)
+    parser.add_argument("--temperature", "-T", type=int, help="分子动力学的温度", nargs="*", default=[300])
+    parser.add_argument("--max_selected", "-max", type=int, help="每次md最多抽取的结构", default=20)
+
+
+
 
     return parser
 
@@ -298,16 +301,14 @@ if __name__ == '__main__':
     parser = build_argparse()
     args = parser.parse_args()
 
-
-
     if not os.path.exists("./result"):
         os.mkdir("./result")
     root_path = Path("./")
 
     if args.job_type == "md":
-        for t in range(50, 1000, 50):
-            molecular_dynamics(args.path, temperature=t)
+        for t in args.temperature:
+            molecular_dynamics(args.path, temperature=t, run_time=args.time)
     elif args.job_type == "prediction":
         prediction(args.path)
     elif args.job_type == "learn":
-        auto_learn()
+        auto_learn(args.path, run_time=args.time, temperatures=args.temperature, max_selected=args.max_selected)
