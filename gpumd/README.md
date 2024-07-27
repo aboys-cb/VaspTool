@@ -45,7 +45,7 @@ pip install calorine ase sklearn
   ```bash
   python GpumdTool.py learn ./s -t 10  -T 300 -max 20
   ```
-
+- 具体的计算细节文件在cache文件夹。抽取的结果在result
 - 如果想跑100-900k 间隔50的温度区间
 
   ```bash
