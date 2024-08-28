@@ -5,11 +5,27 @@
 # @email    : 1747193328@qq.com
 import logging
 import sys
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    stream=sys.stdout  # 指定输出流为sys.stdout
+
+)
+__version__ = "1.2.0"
+logging.info(f"VaspTool-{__version__}")
+
+logging.info(f"开始初始化，请稍等...")
+
+
 from functools import cached_property, partial
+
 
 import matplotlib
 
 matplotlib.use('Agg')
+
 from ruamel.yaml.comments import CommentedMap
 import abc
 import argparse
@@ -27,11 +43,13 @@ import os
 import subprocess
 from typing import *
 from tqdm import tqdm
+
 from monty.os import cd
 from monty.dev import requires
 from monty.io import zopen
 from monty.json import MontyEncoder, MontyDecoder
 from monty.serialization import loadfn
+
 from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 from pymatgen.core import Structure, Lattice, SETTINGS
 
@@ -50,6 +68,7 @@ from pymatgen.analysis.eos import EOS
 
 from pymatgen.io.ase import AseAtomsAdaptor
 
+
 try:
     from phonopy import Phonopy
     from phonopy.file_IO import write_FORCE_CONSTANTS, write_disp_yaml, write_FORCE_SETS
@@ -60,6 +79,7 @@ try:
 except:
     Phonopy = None
 
+
 try:
     from ase.io import read as ase_read
     from ase.io import write as ase_write
@@ -69,17 +89,10 @@ except:
 
 
 
+
 from matplotlib import pyplot as plt
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    stream=sys.stdout  # 指定输出流为sys.stdout
 
-)
-__version__ = "1.1.3"
-logging.info(f"VaspTool-{__version__}")
 
 if os.path.exists("./config.yaml"):
     conf_path = "./config.yaml"
@@ -503,7 +516,7 @@ def verify_path(path: Path) -> None:
         os.makedirs(path)
 
 
-def get_vacuum_axis(structure: Structure, vacuum_size=5):
+def get_vacuum_axis(structure: Structure, vacuum_size=10):
     """
     判断真空层所在的轴  大于5A的控件被判定为真空轴
     没有返回None
@@ -648,7 +661,8 @@ class BaseKpoints:
             else:
 
                 kps = [kp, kp, kp]
-                vacuum = get_vacuum_axis(structure, 5)
+                vacuum = get_vacuum_axis(structure, 10)
+
                 if vacuum is not None:
                     kps[vacuum] = 1
 
@@ -1068,9 +1082,11 @@ class SCFJob(JobBase):
             name = vasprun.final_structure.composition.to_pretty_string()
             config_type = self.structure.properties.get("Config_type", f"scf-{name}")
 
-            write_to_xyz(self.run_dir.joinpath("vasprun.xml"), f"./result/{name}.xyz", config_type, append=True)
+            write_to_xyz(self.run_dir.joinpath("vasprun.xml"), f"./result/{name}{GlobSuffix}.xyz", config_type,
+                         append=True)
 
-            write_to_xyz(self.run_dir.joinpath("vasprun.xml"), f"./result/train.xyz", config_type, append=True)
+            write_to_xyz(self.run_dir.joinpath("vasprun.xml"), f"./result/train{GlobSuffix}.xyz", config_type,
+                         append=True)
 
 
         return result
@@ -1085,7 +1101,7 @@ class WorkFunctionJob(SCFJob):
         incar = super().incar
         incar["LVHAR"] = True
 
-        if get_vacuum_axis(self.structure, 5) is not None:
+        if get_vacuum_axis(self.structure, 10) is not None:
             incar["LDIPOL"] = True
             incar["IDIPOL"] = get_vacuum_axis(self.structure, 5) + 1
 
@@ -2349,7 +2365,7 @@ class VaspTool:
             for value in values:
 
                 structure = self.structure.copy()
-                if get_vacuum_axis(structure, 5) is None:
+                if get_vacuum_axis(structure, 10) is None:
                     # 3维情况
                     for i, k in lattice_map.items():
                         matrix[i, :] = (matrix[i, :] / k) * (k + value)
@@ -2357,7 +2373,7 @@ class VaspTool:
 
                 else:
                     for i, k in lattice_map.items():
-                        if i == get_vacuum_axis(structure, 5):
+                        if i == get_vacuum_axis(structure, 10):
                             continue
                         matrix[i, :] = (matrix[i, :] / k) * (k + value)
                 structure.lattice = Lattice(matrix)
@@ -2455,7 +2471,7 @@ class VaspTool:
             try:
                 if struct_info.get("calculate"):
                     continue
-                path = Path(f"./cache/{struct_info['system']}")
+                path = Path(f"./cache/{struct_info['system']}{GlobSuffix}")
 
                 if calculate_type in callback_function.keys():
                     struct_info = callback_function[calculate_type](struct_info, path)
@@ -2471,8 +2487,8 @@ class VaspTool:
                 with open("./err.txt", "a+", encoding="utf8") as f:
                     f.write(struct_info['system'] + "\n")
 
-            store_dataframe_as_json(struct_info.to_frame(), f"./cache/{struct_info['system']}/result.json")
-            struct_info[struct_info.index != 'structure'].to_csv(f"./cache/{struct_info['system']}/result.csv")
+            store_dataframe_as_json(struct_info.to_frame(), path.joinpath("result.json"))
+            struct_info[struct_info.index != 'structure'].to_csv(path.joinpath("result.csv"))
             struct_info["calculate"] = True
 
             for i in struct_info.index:
@@ -2485,8 +2501,9 @@ class VaspTool:
 
                 store_dataframe_as_json(structure_dataframe, file_path.name)
             else:
-                store_dataframe_as_json(structure_dataframe, "./result/all_result.json")
-                structure_dataframe.loc[:, structure_dataframe.columns != 'structure'].to_csv(f"./result/result.csv")
+                store_dataframe_as_json(structure_dataframe, f"./result/all_result{GlobSuffix}.json")
+                structure_dataframe.loc[:, structure_dataframe.columns != 'structure'].to_csv(
+                    f"./result/result{GlobSuffix}.csv")
 
             # break
         logging.info("全部计算完成")
@@ -2538,6 +2555,9 @@ def build_argparse():
     )
 
     group_run = parser.add_argument_group('任务相关', '设置计算核数、vasp、mpirun环境等。')
+    group_run.add_argument(
+        "-s", "--suffix", type=str, help="给文件夹名字以及输出文件添加一个后缀", default=setting.get("suffix", "")
+    )
     group_run.add_argument(
         "-f", "--force_coverage", action='store_true', help="是否强制覆盖运行", default=False
     )
@@ -2629,6 +2649,11 @@ if __name__ == '__main__':
                     open_soc=args.open_soc,
                     incar_args=incar_args
                     )
+    if args.suffix:
+        # 多节点在同一路径计算 给每个job设置一个后缀 这样可以避免数据在同一个路径下计算造成数据覆盖
+        GlobSuffix = f"-{args.suffix}"
+    else:
+        GlobSuffix = ""
     vasp.set_plot_setting(vbm=args.energy_min, cbm=args.energy_max, dpi=args.dpi)
 
     vasp.count_main(args.path, args.calculate_type)

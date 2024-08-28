@@ -72,7 +72,7 @@ INCAR :
   SIGMA : 0.05
   ISTART : 0 #在band 或者dos这种 程序会更改为1  初始文件主要控制优化以及自洽的时候
   NELM : 100
-  ENCUT: 700
+  ENCUT: 500
   ALGO : Normal #在算性质的时候 会更改 比如HSE的时候是Damped
   PREC : Normal
   GGA : PE #pbesol会更改为PS
@@ -145,13 +145,13 @@ KPOINTS:
       default: 25
   phono:
     sr:
-      default: 1000
+      default: 35
     super:
-      - [ 2,   0,   0 ]
-      - [ 0,   2,   0 ]
-      - [ 0,   0,   2 ]
+      - [ 7,   0,   0 ]
+      - [ 0,   7,   0 ]
+      - [ 0,   0,   1 ]
     scf:
-      default: 1000
+      default: 35
     band:
       default: 100
 
