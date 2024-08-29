@@ -1,9 +1,15 @@
 #! /bin/bash
-#SBATCH --job-name=ccb
+#SBATCH --job-name=gpumd-python
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=64
-source /opt/intel/oneapi/setvars.sh
-export PATH=~/opt/vasp.6.4.2/bin:$PATH
+#SBATCH --ntasks-per-node=1
+#SBATCH --partition=gpu-a800
+#SBATCH --gres=gpu:1
+module load gcc-10.1.0-gcc-10.1.0-3o3bvj2
+source ~/.bashrc
+ 
+export PATH=/opt/app/cuda/12.2/bin:${PATH}
+export LD_LIBRARY_PATH=/opt/app/cuda/12.2/lib64:${LD_LIBRARY_PATH}
+export PATH=~/opt/GPUMD-3.9.4/src:$PATH
 
 __conda_setup="$('/opt/app/anaconda3/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
 if [ $? -eq 0 ]; then
@@ -18,4 +24,7 @@ fi
 unset __conda_setup
 
 conda activate mysci
-python -u VaspTool.py dielectric structures
+python GpumdTool.py learn  s -t 1000  -T {50..250..50} --template=nvt_nhc
+
+
+

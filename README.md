@@ -156,6 +156,8 @@ sbatch python.sh
 
 ## 多任务同时提交
 
+<span style="color:red;">对于配合GpumdTool训练势函数，如果是多节点批量计算同一结构，强烈建议给每个任务加一个后缀（-s
+后缀）避免覆盖。在slurm中可以加入 `-s $SLURM_JOB_ID`，最后在通过cat合并result中的xyz文件。</span>
 - 首先将需要计算的结构分好类
 - 假设现在我现在需要算500个结构的单点能 我想分成5个任务提交
 - 我在脚本目录下新建一个`structures`的文件夹。

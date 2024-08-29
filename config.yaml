@@ -12,7 +12,7 @@ SETTING:
   EOSStepNum: 8
   EOSModel: murnaghan
   #EOSModel 选择其中一个   murnaghan birch birch_murnaghan pourier_tarantola vinet deltafactor numerical_eos
-  ENCUTScale: 1.5 #当ENCUTScale为不为零的数字时 会自动取最大值*ENCUTScale。如果想固定截断能 设置为0或者False即可
+  ENCUTScale: 0 #当ENCUTScale为不为零的数字时 会自动取最大值*ENCUTScale。如果想固定截断能 设置为0或者False即可
   ExportProjection: True
   ExportXYZ: True #在单点能以及分子动力学运行后 自动导出xyz文件
   UseInputFileName: False
@@ -24,7 +24,7 @@ MAGMOM:
     Fe: 5
     Co: 0.6
     La: 0.6
-    Pb: 0.1
+
 
 #U值 给程序传入-u参数 就会开启+u 如果u值出现在下面的配置中 就设置 否则不开启
 

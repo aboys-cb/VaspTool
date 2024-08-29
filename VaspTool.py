@@ -56,7 +56,7 @@ from pymatgen.core import Structure, Lattice, SETTINGS
 from pymatgen.io.vasp.inputs import Incar, Poscar, Kpoints, VaspInput, Potcar, PotcarSingle
 from pymatgen.io.vasp.outputs import Vasprun, BSVasprun, Outcar, Eigenval, Wavecar, Locpot
 
-from pymatgen.io.lobster import Lobsterin, Lobsterout
+from pymatgen.io.lobster import Lobsterin, Lobsterout, Icohplist
 from pymatgen.electronic_structure.core import Spin, Orbital
 from pymatgen.electronic_structure.dos import CompleteDos
 
@@ -1136,12 +1136,19 @@ class LobsterJob(JobBase):
         super().__init__(step_type="scf", folder="cohp", **kwargs)
 
     def build_lobster(self, basis_setting):
-        lobsterin_dict = {"basisSet": "pbeVaspFit2015", "COHPstartEnergy": -10.0, "COHPendEnergy": 5.0,
+        lobsterin_dict = {"basisSet": "pbeVaspFit2015", "COHPstartEnergy": -10.0, "COHPendEnergy": 10.0,
                           "cohpGenerator": "from 0.1 to 6.0 orbitalwise", "saveProjectionToFile": True}
         # every interaction with a distance of 6.0 is checked
         # the projection is saved
         if self.incar["ISMEAR"] == 0:
             lobsterin_dict["gaussianSmearingWidth"] = self.incar["SIGMA"]
+        lobsterin_dict["skipdos"] = True
+        lobsterin_dict["skipcoop"] = True
+        lobsterin_dict["skipPopulationAnalysis"] = True
+        lobsterin_dict["skipGrossPopulation"] = True
+        # lobster-4.1.0
+        lobsterin_dict["skipcobi"] = True
+        lobsterin_dict["skipMadelungEnergy"] = True
         basis = [f"{key} {value}" for key, value in basis_setting.items()]
         lobsterin_dict["basisfunctions"] = basis
 
@@ -1162,6 +1169,32 @@ class LobsterJob(JobBase):
 
         return super().run(lobster=self.lobster, **kwargs)
 
+    def extract_icohp(self):
+        icohp = Icohplist(filename=self.run_dir.joinpath("ICOHPLIST.lobster").as_posix())
+
+        icohps = icohp.icohpcollection
+
+        elements_with_numbers = list(set(icohps._list_atom1 + icohps._list_atom2))
+
+        def extract_number(element):
+            match = re.search(r'(\d+)$', element)
+            return int(match.group(1)) if match else None
+
+        numbers = [extract_number(elem) for elem in elements_with_numbers]
+
+        sorted_pairs = sorted(zip(elements_with_numbers, numbers), key=lambda x: x[1])
+        sorted_elements_with_numbers = [pair[0] for pair in sorted_pairs]
+        frame = pd.DataFrame(index=sorted_elements_with_numbers, columns=sorted_elements_with_numbers)
+        for _icohp in icohps._icohplist.values():
+            if _icohp._translation != [0, 0, 0]:
+                continue
+            frame.loc[_icohp._atom1, _icohp._atom2] = _icohp._icohp[Spin.up]
+            if Spin.down in _icohp._icohp.keys():
+                frame.loc[_icohp._atom2, _icohp._atom1] = _icohp._icohp[Spin.down]
+
+        frame.to_csv(self.run_dir.joinpath("icohp.csv"))
+
+
     def post_processing(self, result=None):
         if result is None:
             result = {}
@@ -1169,7 +1202,12 @@ class LobsterJob(JobBase):
         lobsterout = Lobsterout(self.run_dir.joinpath("lobsterout").as_posix())
         result["basis"] = lobsterout.basis_functions
         result["charge_spilling"] = lobsterout.charge_spilling
-        result["best_path"] = self.run_dir
+        result["best_path"] = self.run_dir.as_posix()
+
+        self.extract_icohp()
+
+
+
         return result
 
 
@@ -2186,10 +2224,11 @@ class VaspTool:
                     best_result = result
 
             count += 1
-        for k, v in best_result:
-            structure_info[k] = v
+        if best_result:
+            for k, v in best_result.items():
+                structure_info[k] = v
 
-        structure_info[structure_info.index != 'structure'].to_csv(path.joinpath(f"/pbe/cohp/result.csv"))
+        structure_info[structure_info.index != 'structure'].to_csv(path.joinpath(f"pbe/cohp/result.csv"))
 
         return structure_info
 

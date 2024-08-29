@@ -8,6 +8,7 @@ import numpy as np
 from scipy.spatial.distance import cdist
 
 matplotlib.use("Agg")
+
 import argparse
 import datetime
 import glob
@@ -24,6 +25,7 @@ from ase.io import write as ase_write
 import matplotlib.pyplot as plt
 from monty.os import cd
 from sklearn.decomposition import PCA
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -156,7 +158,7 @@ def iter_path(glob_strs: list):
 
 
 @iter_path(["*.xyz", "*.vasp"])
-def molecular_dynamics(path: Path, temperature, run_time):
+def molecular_dynamics(path: Path, temperature, run_time, template):
     """
     根据指定的文件夹 以此计算文件夹下的所有的xyz文件
 
@@ -170,19 +172,30 @@ def molecular_dynamics(path: Path, temperature, run_time):
 
     else:
         atoms = ase_read(path, 0, format="extxyz")
-    md_path = root_path.joinpath(f"cache/{atoms.symbols}/{run_time}/md-{temperature}k")
+    md_path = root_path.joinpath(f"cache/{atoms.symbols}/{run_time}/md@{template}-{temperature}k")
+    shutil.rmtree(md_path, ignore_errors=True)
+
     verify_path(md_path)
     logging.info(f"路径：{md_path.as_posix()}")
+    new_run_in = []
+    run_in = read_runfile(f"./{template}")
+    for step in run_in:
+        if step[0] == "velocity":
+            new = ("velocity", temperature)
+        elif step[0] == "ensemble":
 
-    run_in = [('potential', 'nep.txt'),
-              ('velocity', temperature),
-              ('ensemble', ('nvt_nhc', temperature, temperature, '100')),
-              ('time_step', 1.0),
-              ('dump_thermo', 1000),
-              ('dump_exyz', ('1000', '0', '0')),
-              ('run', 1000 * run_time)]
+            ensemble = list(step[1])
 
-    write_runfile(md_path.joinpath("run.in"), run_in)
+            ensemble[1] = temperature
+            ensemble[2] = temperature
+            new = ("ensemble", ensemble)
+        elif step[0] == "run":
+            new = ('run', 1000 * run_time)
+        else:
+            new = step
+        new_run_in.append(new)
+
+    write_runfile(md_path.joinpath("run.in"), new_run_in)
 
     cp_file(root_path.joinpath("nep.txt"), md_path.joinpath("nep.txt"))
     atoms.write(md_path.joinpath("model.xyz"), format="extxyz")
@@ -215,14 +228,19 @@ def select_structures(train, new: Path, max_selected=20):
     # 画一下图
 
     reducer = PCA(n_components=2)
-    reducer.fit(new_des)
-    proj = reducer.transform(new_des)
+    reducer.fit(np.vstack([train_des, new_des]))
     fig = plt.figure()
-    plt.scatter(proj[:, 0], proj[:, 1], label='all data')
+
+    proj = reducer.transform(train_des)
+    plt.scatter(proj[:, 0], proj[:, 1], label='train', c="gray")
+
+    proj = reducer.transform(new_des)
+    plt.scatter(proj[:, 0], proj[:, 1], label='MD dataset', c="#07cd66")
+
 
     if selected_i:
         selected_proj = reducer.transform(np.array([new_des[i - train_des.shape[0]] for i in selected_i]))
-        plt.scatter(selected_proj[:, 0], selected_proj[:, 1], label='selected data')
+        plt.scatter(selected_proj[:, 0], selected_proj[:, 1], label='selected', c="red")
     plt.legend()
     plt.axis('off')
 
@@ -230,7 +248,7 @@ def select_structures(train, new: Path, max_selected=20):
     return [new_atoms[i - train_des.shape[0]] for i in selected_i]
 
 
-def auto_learn(path, run_time, temperatures, max_selected):
+def auto_learn(path, run_time, temperatures, max_selected, template):
     """
     主动学习迭代
     首先要有一个nep.txt   nep.in train.xyz
@@ -240,7 +258,7 @@ def auto_learn(path, run_time, temperatures, max_selected):
 
     trainxyz = ase_read("train.xyz", ":", format="extxyz")
     # for epoch, run_time in enumerate(times):
-    logging.info(f"开始第次主动学习，采样时长：{run_time} ps。")
+    logging.info(f"开始主动学习，采样时长：{run_time} ps。")
     # 存放每次epoch 新增的训练集
     new_atoms = []
     # 进行gpumd采样
@@ -248,7 +266,7 @@ def auto_learn(path, run_time, temperatures, max_selected):
         # 对每个温度进行采样
         logging.info(f"GPUMD采样中，温度：{temperature}k。时长：{run_time}ps")
 
-        md_paths = molecular_dynamics(path, temperature=temperature, run_time=run_time)
+        md_paths = molecular_dynamics(path, temperature=temperature, run_time=run_time, template=template)
         # 筛选出结构
         for md_path in md_paths:
 
@@ -260,7 +278,7 @@ def auto_learn(path, run_time, temperatures, max_selected):
 
     logging.info(f"本次主动学习新增了{len(new_atoms)}个结构。")
 
-    ase_write(root_path.joinpath(f"result/learn-epoch-{run_time}ps.xyz"), new_atoms, format="extxyz")
+    ase_write(root_path.joinpath(f"result/learn-epoch-{run_time}ps@{template}.xyz"), new_atoms, format="extxyz")
 
     # 然后nep训练
 
@@ -284,6 +302,8 @@ def build_argparse():
     )
     parser.add_argument("--time", "-t", type=int, help="分子动力学的时间，单位ps。", default=10)
     parser.add_argument("--temperature", "-T", type=int, help="分子动力学的温度", nargs="*", default=[300])
+    parser.add_argument("--template", type=str, help="模板文件的文件名", default="nvt")
+
     parser.add_argument("--max_selected", "-max", type=int, help="每次md最多抽取的结构", default=20)
 
 
@@ -307,8 +327,9 @@ if __name__ == '__main__':
 
     if args.job_type == "md":
         for t in args.temperature:
-            molecular_dynamics(args.path, temperature=t, run_time=args.time)
+            molecular_dynamics(args.path, temperature=t, run_time=args.time, template=args.template)
     elif args.job_type == "prediction":
         prediction(args.path)
     elif args.job_type == "learn":
-        auto_learn(args.path, run_time=args.time, temperatures=args.temperature, max_selected=args.max_selected)
+        auto_learn(args.path, run_time=args.time, temperatures=args.temperature, template=args.template,
+                   max_selected=args.max_selected)
