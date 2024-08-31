@@ -52,7 +52,8 @@ def plot_train_result(axes: plt.Axes, config: dict):
         axes.plot(np.linspace(min_value, max_value, num=10), np.linspace(min_value, max_value, num=10), '-', color="k")
         rmse = np.sqrt(mean_squared_error(data[:, :index], data[:, index:]))
         r2 = r2_score(data[:, :index], data[:, index:])
-        axes.text(xy[0], xy[1], f'{data_type} RMSE={1000 * rmse:.3f}(m{config["unit"]})\n{data_type} $R^2$={r2:.3f}',
+        axes.text(xy[0], xy[1],
+                  f'{data_type} RMSE={1000 * rmse:.3f}({"m" + config["unit"] if config["name"] != "stress" else "MPa"} )\n{data_type} $R^2$={r2:.3f}',
                   transform=axes.transAxes, fontsize=13)
 
     handles, labels = axes.get_legend_handles_labels()

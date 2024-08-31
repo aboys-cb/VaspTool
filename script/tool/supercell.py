@@ -11,7 +11,7 @@ path = "./"
 if not os.path.exists("./super"):
     os.mkdir("./super")
 for cif in os.listdir(path):
-    if os.path.isfile(cif) and cif.endswith("cif"):
+    if os.path.isfile(cif) and cif.endswith("vasp"):
         struct = Structure.from_file(cif)
-        supercell = struct.make_supercell([2, 1, 1])
+        supercell = struct.make_supercell([6, 12, 12])
         supercell.to("./super/" + supercell.composition.to_pretty_string() + ".cif")
