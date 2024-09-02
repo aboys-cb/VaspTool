@@ -172,7 +172,7 @@ def molecular_dynamics(path: Path, temperature, run_time, template):
 
     else:
         atoms = ase_read(path, 0, format="extxyz")
-    md_path = root_path.joinpath(f"cache/{atoms.symbols}/{run_time}/md@{template}-{temperature}k")
+    md_path = root_path.joinpath(f"cache/{atoms.symbols}{GlobSuffix}/{run_time}/md@{template}-{temperature}k")
     shutil.rmtree(md_path, ignore_errors=True)
 
     verify_path(md_path)
@@ -273,12 +273,13 @@ def auto_learn(path, run_time, temperatures, max_selected, template):
             selected = select_structures(trainxyz + new_atoms, md_path.joinpath("dump.xyz"), max_selected=max_selected)
             logging.info(f"得到{len(selected)}个结构")
             for i, atom in enumerate(selected):
-                atom.info["Config_type"] = f"epoch-{run_time}ps-{temperature}k-{i + 1}"
+                atom.info["Config_type"] = f"{atom.symbols}-epoch-{run_time}ps-{temperature}k-{i + 1}"
             new_atoms.extend(selected)
 
     logging.info(f"本次主动学习新增了{len(new_atoms)}个结构。")
 
-    ase_write(root_path.joinpath(f"result/learn-epoch-{run_time}ps@{template}.xyz"), new_atoms, format="extxyz")
+    ase_write(root_path.joinpath(f"result/learn-epoch-{run_time}ps@{template}{GlobSuffix}.xyz"), new_atoms,
+              format="extxyz")
 
     # 然后nep训练
 
@@ -306,7 +307,9 @@ def build_argparse():
 
     parser.add_argument("--max_selected", "-max", type=int, help="每次md最多抽取的结构", default=20)
 
-
+    parser.add_argument(
+        "-s", "--suffix", type=str, help="给文件夹名字以及输出文件添加一个后缀", default=""
+    )
 
 
     return parser
@@ -324,7 +327,11 @@ if __name__ == '__main__':
     if not os.path.exists("./result"):
         os.mkdir("./result")
     root_path = Path("./")
-
+    if args.suffix:
+        # 多节点在同一路径计算 给每个job设置一个后缀 这样可以避免数据在同一个路径下计算造成数据覆盖
+        GlobSuffix = f"-{args.suffix}"
+    else:
+        GlobSuffix = ""
     if args.job_type == "md":
         for t in args.temperature:
             molecular_dynamics(args.path, temperature=t, run_time=args.time, template=args.template)

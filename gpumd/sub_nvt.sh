@@ -24,7 +24,7 @@ fi
 unset __conda_setup
 
 conda activate mysci
-python GpumdTool.py learn  s -t 1000  -T {50..250..50} --template=nvt_nhc
+python GpumdTool.py learn  s -t 1000  -T {50..250..50} --template=nvt_nhc -s $SLURM_JOB_ID
 
 
 
