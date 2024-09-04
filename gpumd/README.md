@@ -28,7 +28,7 @@ conda create -n mysci python=3.10
 使用 pip 安装必需的库：
 
 ```bash
-pip install calorine ase sklearn
+pip install calorine ase scikit-learn
 ```
 
 将gpumd加入到~/.bashrc 程序会直接调用gpumd
