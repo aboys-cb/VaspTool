@@ -85,7 +85,7 @@ def run(run_cmd: str, run_dir: Path):
     logging.info("\t开始计算")
 
     vasp_cmd = [os.path.expanduser(os.path.expandvars(run_cmd))]
-    with cd(run_dir), open(f"{run_cmd}.out", "w") as f_std, open(f"{run_cmd}.err", "w", buffering=1) as f_err:
+    with cd(run_dir), open(f"gpumd.out", "w") as f_std, open(f"gpumd.err", "w", buffering=1) as f_err:
         subprocess.check_call(vasp_cmd, stdout=f_std, stderr=f_err)
     logging.info("\t计算完成" + f"\t耗时：{datetime.datetime.now() - start}")
 
@@ -95,7 +95,7 @@ def remove_garbage_structure(atoms_list):
     result = []
     for atoms in atoms_list:
         postion = atoms.get_all_distances()
-        if (np.min(postion[postion > 0])) < 1:
+        if (np.min(postion[postion > 0])) < 0.8:
             continue
         result.append(atoms)
 
@@ -245,8 +245,31 @@ def select_structures(train, new: Path, max_selected=20):
     plt.axis('off')
 
     plt.savefig(new.with_name('select.png'))
+    plt.close(fig)
+
     return [new_atoms[i - train_des.shape[0]] for i in selected_i]
 
+
+def plot_all_structure(train_data, add_data, save_path):
+    train_des = np.array([np.mean(get_descriptors(i, "nep.txt"), axis=0) for i in train_data])
+    add_des = np.array([np.mean(get_descriptors(i, "nep.txt"), axis=0) for i in add_data])
+
+    reducer = PCA(n_components=2)
+    reducer.fit(np.vstack([train_des, add_des]))
+
+    fig = plt.figure()
+
+    proj = reducer.transform(train_des)
+    plt.scatter(proj[:, 0], proj[:, 1], label='train', c="gray")
+
+    proj = reducer.transform(add_des)
+    plt.scatter(proj[:, 0], proj[:, 1], label='add', c="#07cd66")
+
+    plt.legend()
+    plt.axis('off')
+
+    plt.savefig(save_path)
+    plt.close(fig)
 
 def auto_learn(path, run_time, temperatures, max_selected, template):
     """
@@ -277,7 +300,7 @@ def auto_learn(path, run_time, temperatures, max_selected, template):
             new_atoms.extend(selected)
 
     logging.info(f"本次主动学习新增了{len(new_atoms)}个结构。")
-
+    plot_all_structure(trainxyz, new_atoms, f"result/learn-epoch-{run_time}ps@{template}{GlobSuffix}.png")
     ase_write(root_path.joinpath(f"result/learn-epoch-{run_time}ps@{template}{GlobSuffix}.xyz"), new_atoms,
               format="extxyz")
 

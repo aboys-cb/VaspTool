@@ -39,7 +39,9 @@ pip install calorine ase sklearn
 - 运行结束后会在脚本目录下有一个result文件夹，里面放着抽取的结构
 - 在具体的计算目录 会有两个图 一个是能量一个是选取的结构分布图
 - <img alt="select.png" height="300" src="./data/select.png" width="300"/> <img alt="md_energy.png" height="300" src="./data/md_energy.png" width="300"/>
-
+- 另外在result目录会有一个png。是本次主动学习添加的总览图。类似learn-epoch-10ps@npt_scr.png
+- <img alt="select.png" height="300" src="./data/learn-epoch-10ps@npt_scr.png" width="300"/> 
+-
 - 如果是主动学习 可以使用以下命令（10ps 300k 每次md最多抽取20个结构）
 
   ```bash
