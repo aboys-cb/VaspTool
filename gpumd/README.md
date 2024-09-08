@@ -2,6 +2,8 @@
 
 [Github](https://github.com/aboys-cb/VaspTool) 国内可选择 [Gitee](https://gitee.com/QMaster/VaspTool)
 
+- Github可能存在网络问题推送不了，导致与Gitee差几个推送。
+- 请以Gitee为主。
 ## 介绍
 
 GpumdTool 主要用于GPUMD的主动学习。
@@ -51,7 +53,7 @@ pip install calorine ase scikit-learn
 - 如果想跑100-900k 间隔50的温度区间
 
   ```bash
-  python GpumdTool.py learn ./s -t 10  -T {100..900..50} --template=npt_scr
+  python GpumdTool.py learn ./s -t 10000  -T {50..300..50} --template=npt_scr
   ```
 
 ## run.in模板

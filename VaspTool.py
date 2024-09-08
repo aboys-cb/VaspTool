@@ -13,7 +13,7 @@ logging.basicConfig(
     stream=sys.stdout  # 指定输出流为sys.stdout
 
 )
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 logging.info(f"VaspTool-{__version__}")
 
 logging.info(f"开始初始化，请稍等...")
@@ -475,7 +475,7 @@ def read_dataframe_from_file(file_path: Path, duplicated=True, **kwargs) -> pd.D
             if ase_read is None:
                 logging.error("xyz文件必须安装ase,请 pip install ase 安装！")
                 return pd.DataFrame()
-            atoms = ase_read(file_path, index=":", format="extxyz")
+            atoms = ase_read(file_path, index=":", format="extxyz", do_not_split_by_at_sign=True)
             for atom in atoms:
                 struct = AseAtomsAdaptor.get_structure(atom)
                 # xyz 分子式一样 所以加个数字标识下
