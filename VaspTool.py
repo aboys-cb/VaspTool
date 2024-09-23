@@ -13,7 +13,7 @@ logging.basicConfig(
     stream=sys.stdout  # 指定输出流为sys.stdout
 
 )
-__version__ = "1.3.0"
+__version__ = "1.3.1"
 logging.info(f"VaspTool-{__version__}")
 
 logging.info(f"开始初始化，请稍等...")
@@ -32,7 +32,6 @@ import argparse
 import glob
 import re
 import shutil
-import warnings
 from pathlib import Path
 import numpy as np
 import json
@@ -91,7 +90,9 @@ except:
 
 
 from matplotlib import pyplot as plt
+import warnings
 
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
 if os.path.exists("./config.yaml"):
@@ -127,7 +128,7 @@ potcar_gw_config = config.get("POTCAR", {}).get("GW")
 step_base_incar = {
     "sr": {
         "add": {
-            "LWAVE": False, "LCHARG": False, "NSW": 100, "ISIF": 3, "IBRION": 2, "ALGO": "Normal"
+            "LWAVE": False, "LCHARG": False, "NSW": 500, "ISIF": 3, "IBRION": 2, "ALGO": "Normal"
         },
         "remove": []
     },
@@ -655,7 +656,7 @@ class BaseKpoints:
 
     def get_kpoints(self, job_type: str, step_type: str, function: str, structure: Structure):
         kp = self.get_kpoint_setting(job_type, step_type, function)
-        if isinstance(kp, int):
+        if isinstance(kp, (int, float)):
             if kp >= 100:
                 kp = Kpoints.automatic_density(structure, kp).kpts[0]
             else:
@@ -1044,6 +1045,7 @@ class SCFJob(JobBase):
         if self.job_type in ["single_point_energy", "phono"]:
             incar["LWAVE"] = False
             incar["LCHARG"] = False
+        incar["NSW"] = 0
         return incar
 
     @cached_property
@@ -2532,7 +2534,7 @@ class VaspTool:
 
             for i in struct_info.index:
                 if i not in structure_dataframe.columns:
-                    structure_dataframe.loc[:, i] = pd.NA
+                    structure_dataframe.loc[:, i] = None
 
             structure_dataframe.loc[index] = struct_info
 

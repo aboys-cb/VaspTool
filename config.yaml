@@ -12,7 +12,7 @@ SETTING:
   EOSStepNum: 8
   EOSModel: murnaghan
   #EOSModel 选择其中一个   murnaghan birch birch_murnaghan pourier_tarantola vinet deltafactor numerical_eos
-  ENCUTScale: 0 #当ENCUTScale为不为零的数字时 会自动取最大值*ENCUTScale。如果想固定截断能 设置为0或者False即可
+  ENCUTScale: 1.2 #当ENCUTScale为不为零的数字时 会自动取最大值*ENCUTScale。如果想固定截断能 设置为0或者False即可
   ExportProjection: True
   ExportXYZ: True #在单点能以及分子动力学运行后 自动导出xyz文件
   UseInputFileName: False
@@ -86,11 +86,11 @@ KPOINTS:
 
   band_structure:
     sr:
-      default : 3000
+      default: 20
     scf:
-      default : 3000
-      pbe : 3000
-      hse : 3000
+      default: 30
+      pbe: 30
+      hse: 30
     band:
       default: 10
       pbe: 20
@@ -99,7 +99,7 @@ KPOINTS:
 
       gw: 3000
     dos:
-      default: 3000
+      default: 30
 
   optic_dielectric:
     sr:
