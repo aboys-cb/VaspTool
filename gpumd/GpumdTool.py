@@ -168,10 +168,10 @@ def molecular_dynamics(path: Path, temperature, run_time, template):
 
 
     if path.suffix == ".vasp":
-        atoms = ase_read(path, 0, format="vasp")
+        atoms = ase_read(path, 0, format="vasp", do_not_split_by_at_sign=True)
 
     else:
-        atoms = ase_read(path, 0, format="extxyz")
+        atoms = ase_read(path, 0, format="extxyz", do_not_split_by_at_sign=True)
     md_path = root_path.joinpath(f"cache/{atoms.symbols}{GlobSuffix}/{run_time}/md@{template}-{temperature}k")
     shutil.rmtree(md_path, ignore_errors=True)
 
@@ -212,10 +212,10 @@ def molecular_dynamics(path: Path, temperature, run_time, template):
     return md_path
 
 
-def select_structures(train, new: Path, max_selected=20):
+def select_structures(train, new: Path, max_selected=20, min_distance=0.01):
     # 首先去掉跑崩溃的结构
 
-    new_atoms = ase_read(new, ":", format="extxyz")
+    new_atoms = ase_read(new, ":", format="extxyz", do_not_split_by_at_sign=True)
 
     new_atoms = remove_garbage_structure(new_atoms)
 
@@ -223,7 +223,7 @@ def select_structures(train, new: Path, max_selected=20):
 
     new_des = np.array([np.mean(get_descriptors(i, "nep.txt"), axis=0) for i in new_atoms])
 
-    selected_i = select(np.vstack([train_des, new_des]), train_des, min_distance=0.01, max_select=max_selected,
+    selected_i = select(np.vstack([train_des, new_des]), train_des, min_distance=min_distance, max_select=max_selected,
                         min_select=0)
     # 画一下图
 
@@ -271,7 +271,8 @@ def plot_all_structure(train_data, add_data, save_path):
     plt.savefig(save_path)
     plt.close(fig)
 
-def auto_learn(path, run_time, temperatures, max_selected, template):
+
+def auto_learn(path, run_time, temperatures, max_selected, template, min_distance):
     """
     主动学习迭代
     首先要有一个nep.txt   nep.in train.xyz
@@ -279,7 +280,7 @@ def auto_learn(path, run_time, temperatures, max_selected, template):
     """
     # 定义迭代时间 单位ps
 
-    trainxyz = ase_read("train.xyz", ":", format="extxyz")
+    trainxyz = ase_read("train.xyz", ":", format="extxyz", do_not_split_by_at_sign=True)
     # for epoch, run_time in enumerate(times):
     logging.info(f"开始主动学习，采样时长：{run_time} ps。")
     # 存放每次epoch 新增的训练集
@@ -293,7 +294,8 @@ def auto_learn(path, run_time, temperatures, max_selected, template):
         # 筛选出结构
         for md_path in md_paths:
 
-            selected = select_structures(trainxyz + new_atoms, md_path.joinpath("dump.xyz"), max_selected=max_selected)
+            selected = select_structures(trainxyz + new_atoms, md_path.joinpath("dump.xyz"), max_selected=max_selected,
+                                         min_distance=min_distance)
             logging.info(f"得到{len(selected)}个结构")
             for i, atom in enumerate(selected):
                 atom.info["Config_type"] = f"{atom.symbols}-epoch-{run_time}ps-{temperature}k-{i + 1}"
@@ -329,6 +331,7 @@ def build_argparse():
     parser.add_argument("--template", type=str, help="模板文件的文件名", default="nvt")
 
     parser.add_argument("--max_selected", "-max", type=int, help="每次md最多抽取的结构", default=20)
+    parser.add_argument("--min_distance", type=float, help="最远点采样的最小键长", default=0.01)
 
     parser.add_argument(
         "-s", "--suffix", type=str, help="给文件夹名字以及输出文件添加一个后缀", default=""
@@ -362,4 +365,4 @@ if __name__ == '__main__':
         prediction(args.path)
     elif args.job_type == "learn":
         auto_learn(args.path, run_time=args.time, temperatures=args.temperature, template=args.template,
-                   max_selected=args.max_selected)
+                   max_selected=args.max_selected, min_distance=args.min_distance)
