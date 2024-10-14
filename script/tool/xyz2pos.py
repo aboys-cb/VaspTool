@@ -12,5 +12,4 @@ if len(sys.argv) == 3:
     index = sys.argv[2]
 else:
     index = -1
-
 write("POSCAR", read(pos_path, index=index, format="extxyz"))

@@ -6,13 +6,25 @@
 """
 使用方式 python plot_sr_energy_force.py OUTCAR
 """
+import os.path
 import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
 from pymatgen.io.vasp.outputs import Outcar
 
-path = sys.argv[1]
+try:
+    path = sys.argv[1]
+except:
+    if os.path.exists("OUTCAR"):
+        print("没有传入文件路径，检测到当前目录下有OUTCAR")
+
+        path = "OUTCAR"
+    else:
+        print("没有传入文件路径，请使用python plot_energy_force.py OUTCAR ")
+
+        exit()
+
 print("正在载入文件。。。")
 
 out = Outcar(path)

@@ -329,29 +329,28 @@ class DosCohpPlotter:
 
 
 if __name__ == '__main__':
-
-    dos_conf = {"vasprun_path": "../cache/Cs1Ag0.5Bi0.5I3/vasprun.xml",
-         "projected": {"I": ["p"],"Ag": [ "d"],"Bi": ["s","p" ]   },
-         }
-
-    cohp_conf={
-        "cohpcar_path":"../cache/Cs1Ag0.5Bi0.5I3/COHPCAR.lobster",
-        "poscar_path":"../cache/Cs1Ag0.5Bi0.5I3/POSCAR",
-        "projected": {"Bi(6s)-I(5p)":{
-                                "label":(185,190),
-                                "orb":["6s-5p"]
-                            },
-                        "Bi(6p)-I(5p)": {
-                            "label": (185, 190),
-                            "orb": ["6p-5p"]
-                        },
-                        "Ag(4d)-I(5p)": {
-                            "label": (161, 166),
-                            "orb": ["4d-5p"]
-                        }
-        }
-
-    }
+    # dos_conf = {"vasprun_path": "../cache/Cs1Ag0.5Bi0.5I3/vasprun.xml",
+    #      "projected": {"I": ["p"],"Ag": [ "d"],"Bi": ["s","p" ]   },
+    #      }
+    #
+    # cohp_conf={
+    #     "cohpcar_path":"../cache/Cs1Ag0.5Bi0.5I3/COHPCAR.lobster",
+    #     "poscar_path":"../cache/Cs1Ag0.5Bi0.5I3/POSCAR",
+    #     "projected": {"Bi(6s)-I(5p)":{
+    #                             "label":(185,190),
+    #                             "orb":["6s-5p"]
+    #                         },
+    #                     "Bi(6p)-I(5p)": {
+    #                         "label": (185, 190),
+    #                         "orb": ["6p-5p"]
+    #                     },
+    #                     "Ag(4d)-I(5p)": {
+    #                         "label": (161, 166),
+    #                         "orb": ["4d-5p"]
+    #                     }
+    #     }
+    #
+    # }
 
     sb_dos_conf = {"vasprun_path": "../cache/Cs8Ag4Bi3Sb1I24/vasprun.xml",
          "projected": {"I": ["p"],"Ag": [ "d"],"Bi": ["s","p" ] , "Sb": ["s","p" ] },
@@ -384,33 +383,33 @@ if __name__ == '__main__':
         }
 
     }
-    cu_dos_conf = {"vasprun_path": "../cache/Cu/vasprun.xml",
-                "projected": {"I": ["p"], "Ag": ["d"], "Bi": ["s", "p"], "Cu": ["d"]},
-                }
-
-    cu_cohp_conf = {
-        "cohpcar_path": "../cache/Cu/COHPCAR.lobster",
-        "poscar_path": "../cache/Cu/POSCAR",
-        "projected": {"Bi(6s)-I(5p)": {
-            "label": (185, 190),
-            "orb": ["6s-5p"]
-        },
-            "Bi(6p)-I(5p)": {
-                "label": (185, 190),
-                "orb": ["6p-5p"]
-            },
-
-            "Cu(4d)-I(5p)": {
-                "label": (161, 166),
-                "orb": ["3d-5p"]
-            },
-            "Ag(4d)-I(5p)": {
-                "label": (167, 172),
-                "orb": ["4d-5p"]
-            }
-        }
-
-    }
+    # cu_dos_conf = {"vasprun_path": "../cache/Cu/vasprun.xml",
+    #             "projected": {"I": ["p"], "Ag": ["d"], "Bi": ["s", "p"], "Cu": ["d"]},
+    #             }
+    #
+    # cu_cohp_conf = {
+    #     "cohpcar_path": "../cache/Cu/COHPCAR.lobster",
+    #     "poscar_path": "../cache/Cu/POSCAR",
+    #     "projected": {"Bi(6s)-I(5p)": {
+    #         "label": (185, 190),
+    #         "orb": ["6s-5p"]
+    #     },
+    #         "Bi(6p)-I(5p)": {
+    #             "label": (185, 190),
+    #             "orb": ["6p-5p"]
+    #         },
+    #
+    #         "Cu(4d)-I(5p)": {
+    #             "label": (161, 166),
+    #             "orb": ["3d-5p"]
+    #         },
+    #         "Ag(4d)-I(5p)": {
+    #             "label": (167, 172),
+    #             "orb": ["4d-5p"]
+    #         }
+    #     }
+    #
+    # }
 
     # 这里可以是分轨道  比如"6px-5px" 如果不是分轨道  会把所有的加和
     plotter=DosCohpPlotter()
