@@ -1,4 +1,4 @@
-Version: 1.3.0
+Version: 1.5.0
 SETTING:
   #PMG_VASP_PSP_DIR 是必须指定的 赝势文件的路径
   PMG_VASP_PSP_DIR : "~/POT_GGA_PAW_PBE_54/"
@@ -22,8 +22,8 @@ SETTING:
 MAGMOM:
 
     Fe: 5
-    Co: 0.6
-    La: 0.6
+    Co: 1
+#    La: 0.6
 
 
 #U值 给程序传入-u参数 就会开启+u 如果u值出现在下面的配置中 就设置 否则不开启
@@ -88,9 +88,9 @@ KPOINTS:
     sr:
       default: 20
     scf:
-      default: 30
-      pbe: 30
-      hse: 30
+      default: 35
+      pbe: 35
+      hse: 35
     band:
       default: 10
       pbe: 20
@@ -99,21 +99,21 @@ KPOINTS:
 
       gw: 3000
     dos:
-      default: 30
+      default: 45
 
   optic_dielectric:
     sr:
-      default : 1000
+      default: 20
     scf:
-      default : 3000
-      pbesol : 6000
+      default: 35
+      pbesol: 35
 
     dielectric:
-      default : 3000
+      default: 45
 
     optic:
-      default : 3000
-      pbesol: 6000
+      default: 45
+      pbesol: 45
 
   cohp :
     scf:
@@ -125,27 +125,27 @@ KPOINTS:
       default: [1,1,1]
   single_point_energy:
     sr:
-      default: [ 1,1,1 ]
-    scf:
       default: 20
+    scf:
+      default: 35
   elastic:
     sr:
-      default: 30
+      default: 20
     elastic:
       default: 45
   work_function:
     sr:
-      default: 30
+      default: 20
     scf:
       default: 30
   bader:
     sr:
-      default: [ 1,1,1 ]
+      default: 20
     scf:
-      default: 25
+      default: 35
   phono:
     sr:
-      default: 35
+      default: 20
     super:
       - [ 7,   0,   0 ]
       - [ 0,   7,   0 ]

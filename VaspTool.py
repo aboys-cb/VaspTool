@@ -6,6 +6,8 @@
 import logging
 import sys
 
+from pymatgen.util.typing import Tuple3Ints, Vector3D
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -13,7 +15,7 @@ logging.basicConfig(
     stream=sys.stdout  # 指定输出流为sys.stdout
 
 )
-__version__ = "1.3.1"
+__version__ = "1.5.0"
 logging.info(f"VaspTool-{__version__}")
 
 logging.info(f"开始初始化，请稍等...")
@@ -42,7 +44,7 @@ import os
 import subprocess
 from typing import *
 from tqdm import tqdm
-
+import math
 from monty.os import cd
 from monty.dev import requires
 from monty.io import zopen
@@ -654,11 +656,39 @@ class BaseKpoints:
             function = "default"
         return self.kpoints[job_type][step_type][function]
 
+    @classmethod
+    def automatic_density(cls, structure: Structure, kppa: float) -> Tuple3Ints:
+
+        if math.fabs((math.floor(kppa ** (1 / 3) + 0.5)) ** 3 - kppa) < 1:
+            kppa += kppa * 0.01
+        lattice = structure.lattice
+        lengths: Vector3D = lattice.abc
+        ngrid = kppa / len(structure)
+        mult: float = (ngrid * lengths[0] * lengths[1] * lengths[2]) ** (1 / 3)
+
+        num_div: Tuple3Ints = cast(Tuple3Ints, [math.floor(max(mult / length, 1)) for length in lengths])
+
+        return num_div
+
+    @classmethod
+    def automatic_density_by_lengths(
+            cls, structure: Structure, length_densities: Sequence[float]
+    ) -> Tuple3Ints:
+
+        if len(length_densities) != 3:
+            raise ValueError(f"The dimensions of length_densities must be 3, not {len(length_densities)}")
+
+        lattice = structure.lattice
+
+        abc = lattice.abc
+        num_div: Tuple3Ints = tuple(math.ceil(ld / abc[idx]) for idx, ld in enumerate(length_densities))
+        return num_div
+
     def get_kpoints(self, job_type: str, step_type: str, function: str, structure: Structure):
         kp = self.get_kpoint_setting(job_type, step_type, function)
         if isinstance(kp, (int, float)):
             if kp >= 100:
-                kp = Kpoints.automatic_density(structure, kp).kpts[0]
+                kp = self.automatic_density(structure, kp)
             else:
 
                 kps = [kp, kp, kp]
@@ -667,7 +697,7 @@ class BaseKpoints:
                 if vacuum is not None:
                     kps[vacuum] = 1
 
-                kp = Kpoints.automatic_density_by_lengths(structure, kps).kpts[0]
+                kp = self.automatic_density_by_lengths(structure, kps)
         logging.info(f"\t网格K点：{kp}")
 
         if self.kpoints_type.upper().startswith("M"):
@@ -819,10 +849,13 @@ class JobBase():
         formula = self.structure.composition.to_pretty_string()
         incar["SYSTEM"] = formula + "-" + self.function + "-" + self.step_type
         incar.has_magnetic(self.structure)
+        if "ENCUT" not in self.incar_kwargs:
 
-        if setting.get("ENCUTScale"):
-            incar.auto_encut(self.structure)
-
+            if setting.get("ENCUTScale"):
+                incar.auto_encut(self.structure)
+        if self.step_type != "sr":
+            if "NSW" in self.incar_kwargs:
+                self.incar_kwargs.pop("NSW")
 
         incar.update(self.incar_kwargs)
         if self.open_soc:
@@ -880,6 +913,7 @@ class JobBase():
     @cached_property
     def potcar(self) -> Potcar:
         potcar = Potcar(symbols=get_pot_symbols(self.structure.species, self.pseudopotential), functional="PBE_54")
+
         return potcar
 
     def check_cover(self):
@@ -936,6 +970,7 @@ class JobBase():
         with cd(self.run_dir), open("vasp.out", "w") as f_std, open("vasp.err", "w", buffering=1) as f_err:
             subprocess.check_call(vasp_cmd, stdout=f_std, stderr=f_err, timeout=timeout)
         logging.info("\t计算完成" + f"\t耗时：{datetime.datetime.now() - start}")
+
         if remove_wavecar:
             self.run_dir.joinpath("WAVECAR").unlink()
 
@@ -1023,6 +1058,7 @@ class StructureRelaxationJob(JobBase):
         if result is None:
             result = {}
 
+
         self.final_structure = Structure.from_file(self.run_dir.joinpath("CONTCAR"))
         self.final_structure.to(self.run_dir.parent.joinpath(
             f'{self.final_structure.composition.to_pretty_string()}-{self.function}.cif').as_posix())
@@ -1043,8 +1079,10 @@ class SCFJob(JobBase):
     def incar(self):
         incar = super().incar
         if self.job_type in ["single_point_energy", "phono"]:
-            incar["LWAVE"] = False
-            incar["LCHARG"] = False
+            if "LWAVE" not in self.incar_kwargs.keys():
+                incar["LWAVE"] = False
+            if "LCHARG" not in self.incar_kwargs.keys():
+                incar["LCHARG"] = False
         incar["NSW"] = 0
         return incar
 
@@ -1066,7 +1104,39 @@ class SCFJob(JobBase):
         if self.function in ["hse", "gw", "r2scan", "scan", "mbj", "diag"]:
             if self.path.joinpath(f"pbe/{self.folder}").exists():
                 cp_file(self.path.joinpath(f"pbe/{self.folder}/WAVECAR"), self.run_dir)
-        return super().run(**kwargs)
+
+        super().run(**kwargs)
+        # 有的体系不收敛
+        vasprun = Vasprun(self.run_dir.joinpath(f"vasprun.xml"), parse_potcar_file=False, parse_dos=False,
+                          parse_eigen=False)
+        if vasprun.converged:
+            return self
+
+        logging.warning("自洽不收敛，后面计算可能会受到影响！")
+        return self
+        # raw_kpoint=self.kpoints
+        # for i in range(30):
+        #     super().run(**kwargs)
+        #     # 有的体系不收敛  读取电荷密度接着自洽
+        #     vasprun = Vasprun(self.run_dir.joinpath(f"vasprun.xml"), parse_potcar_file=False, parse_dos=False,
+        #                       parse_eigen=False)
+        #     if vasprun.converged:
+        #         if raw_kpoint.kpts!=self.kpoints.kpts:
+        #             logging.warning("Gamma点收敛，恢复原k点继续自洽！")
+        #
+        #             self.kpoints=raw_kpoint
+        #             continue
+        #         return self
+        #     if raw_kpoint.style==KpointsSupportedModes.Monkhorst:
+        #         new=Kpoints.monkhorst_automatic([1,1,1])
+        #     else:
+        #         new = Kpoints.gamma_automatic([1,1,1])
+        #     self.kpoints=new
+        #     self.incar["ICHARG"] = 1
+        #     logging.warning("自洽不收敛，读取电荷密度继续自洽！")
+        #
+        # logging.warning("10次自洽不收敛，后面计算可能会受到影响！")
+        # return self
 
     def post_processing(self, result=None):
         if result is None:
@@ -1816,6 +1886,7 @@ class BaderJob(SCFJob):
     def post_processing(self, result=None):
         result = super().post_processing(result)
         logging.info("\t开始bader电荷分析。")
+
         summary = bader_analysis_from_path(self.run_dir.as_posix())
         logging.info("\tbader电荷分析完成。")
 
